@@ -1,15 +1,23 @@
 package com.hpe.application.automation.tools.ssc;
 
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.type.TypeFactory;
 import com.hpe.application.automation.tools.octane.events.SSCFortifyConfigurations;
+//import com.hpe.application.automation.tools.rest.RestClient;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
+import org.apache.http.HttpRequest;
+import org.apache.http.StatusLine;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpGet;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.client.utils.HttpClientUtils;
 import org.apache.http.entity.ByteArrayEntity;
+import org.apache.http.entity.ContentType;
+import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.impl.client.HttpClients;
@@ -18,6 +26,9 @@ import org.apache.http.util.EntityUtils;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
+import java.util.Date;
+import java.util.HashMap;
 
 /**
  * Created by hijaziy on 7/12/2018.
@@ -186,7 +197,7 @@ public class SscConnector {
 
     public static void main(String[] args){
         SSCFortifyConfigurations sscFortifyConfigurations = new SSCFortifyConfigurations();
-        sscFortifyConfigurations.baseToken = "Basic QWRtaW46ZGV2c2Vjb3Bz";//ConfigurationService.getServerConfiguration().getSscBaseToken(); //"Basic QWRtaW46ZGV2c2Vjb3Bz";
+        sscFortifyConfigurations.baseToken = "Basic QWRtaW46ZGV2c2Vjb3BzMQ==";//ConfigurationService.getServerConfiguration().getSscBaseToken(); //"Basic QWRtaW46ZGV2c2Vjb3Bz";
         sscFortifyConfigurations.projectName = "YaminApp";
         sscFortifyConfigurations.projectVersion = "1";
         sscFortifyConfigurations.serverURL = "myd-vma00564.swinfra.net:8180"; //http://myd-vma00564.swinfra.net:8180/ssc

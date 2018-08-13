@@ -1,10 +1,12 @@
 package com.hpe.application.automation.tools.octane.events;
 
 import com.hp.octane.integrations.dto.DTOFactory;
+import com.hp.octane.integrations.dto.SecurityScans.OctaneIssue;
 import com.hp.octane.integrations.dto.entities.Entity;
 import com.hpe.application.automation.tools.ssc.Issues;
 import com.hpe.application.automation.tools.ssc.ProjectVersions;
 import com.hpe.application.automation.tools.ssc.SscConnector;
+import com.microfocus.application.automation.tools.octane.configuration.ConfigurationService;
 import com.microfocus.application.automation.tools.octane.tests.build.BuildHandlerUtils;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
@@ -15,11 +17,10 @@ import hudson.tasks.Publisher;
 import java.io.File;
 import java.io.PrintWriter;
 import java.lang.reflect.Field;
+import java.text.DateFormat;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Calendar;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Created by hijaziy on 7/23/2018.
@@ -31,6 +32,11 @@ public class SSCHandler {
     private ProjectVersions.ProjectVersion projectVersion;
     private Run run;
     public static final String SCAN_RESULT_FILE = "securityScan.json";
+    public static String SEVERITY_LG_NAME_LOW = "list_node.severity.low";
+    public static String SEVERITY_LG_NAME_MEDIUM = "list_node.severity.medium";
+    public static String SEVERITY_LG_NAME_HIGH = "list_node.severity.high";
+    public static String SEVERITY_LG_NAME_CRITICAL = "list_node.severity.urgent";
+    public static String EXTERNAL_TOOL_NAME =  "Fortify SSC";
 
     public boolean getScanFinishStatus() {
         //need to check if there is scan that started after run started, if not return false
@@ -54,7 +60,7 @@ public class SSCHandler {
         String sscServer = getSSCServer();
 
         //"Basic QWRtaW46ZGV2c2Vjb3Bz"
-        sscFortifyConfigurations.baseToken = "Basic QWRtaW46ZGV2c2Vjb3BzMQ==";
+        sscFortifyConfigurations.baseToken = ConfigurationService.getModel().getSscBaseToken();
         sscFortifyConfigurations.projectName = project.project;
         sscFortifyConfigurations.projectVersion = project.version;
         sscFortifyConfigurations.serverURL = sscServer;
@@ -66,7 +72,7 @@ public class SSCHandler {
 
     }
 
-    public Issues getLatestScan() {
+    public void getLatestScan() {
 
 //        saveReport();
 
@@ -75,10 +81,142 @@ public class SSCHandler {
         if(buildCiId.equals("54")){
             saveReport();
         }
-        return sscConnector.readIssuesOfLastestScan(projectVersion);
-//        return null;
 
+        Issues issues = sscConnector.readIssuesOfLastestScan(projectVersion);
+        List<OctaneIssue> octaneIssues = createOctaneIssues(issues);
+        IssuesFileSerializer issuesFileSerializer = new IssuesFileSerializer(run,octaneIssues);
+        issuesFileSerializer.doSerialize();
 
+    }
+
+    private List<OctaneIssue> createOctaneIssues(Issues issues) {
+        if(issues == null){
+            return new ArrayList<>();
+        }
+        DTOFactory dtoFactory = DTOFactory.getInstance();
+        List<OctaneIssue> octaneIssues = new ArrayList<>();
+        for (Issues.Issue issue : issues.data) {
+            OctaneIssue octaneIssue = dtoFactory.newDTO(OctaneIssue.class);
+            setOctaneAnalysis(dtoFactory, issue, octaneIssue);
+            setOctaneSeverity(dtoFactory, issue, octaneIssue);
+            setOctaneStatus(dtoFactory, issue, octaneIssue);
+            Map extendedData = getExtendedData(issue);
+            octaneIssue.setExtended_data(extendedData);
+            octaneIssue.setPrimary_location_full(issue.primaryLocation);
+            octaneIssue.setLine(issue.lineNumber);
+            octaneIssue.setRemote_id(issue.issueInstanceId);
+            octaneIssue.setIntroduced_date(convertDates(issue.foundDate));
+            octaneIssue.setExternal_link(issue.hRef);
+            octaneIssue.setTool_name(EXTERNAL_TOOL_NAME);
+            octaneIssues.add(octaneIssue);
+        }
+
+        return octaneIssues;
+    }
+    static private String convertDates(String inputFoundDate) {
+        if(inputFoundDate == null){
+            return null;
+        }
+        //"2017-02-12T12:31:44.000+0000"
+        DateFormat sourceDateFormat = new SimpleDateFormat("yyyy-MM-dd'T'hh:mm:ss");
+        Date date = null;
+        try {
+            date = sourceDateFormat.parse(inputFoundDate);
+            //"2018-06-03T14:06:58Z"
+            SimpleDateFormat targetDateFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'");
+            return targetDateFormat.format(date);
+        } catch (ParseException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
+    private void setOctaneAnalysis(DTOFactory dtoFactory, Issues.Issue issue, OctaneIssue octaneIssue) {
+//        "issueStatus" : "Unreviewed", - analysis
+//        "audited" : false,- analysis
+//        "reviewed" : null, - analysis ?
+
+//        "list_node.issue_analysis_node.not_an_issue"
+//        "list_node.issue_analysis_node.maybe_an_issue"
+//        "list_node.issue_analysis_node.bug_submitted"
+//        "list_node.issue_analysis_node.reviewed"
+        String analysisId = null;
+        if (issue.issueStatus != null && issue.issueStatus.equalsIgnoreCase("reviewed")) {
+            analysisId = "list_node.issue_analysis_node.reviewed";
+        } else if (issue.reviewed != null && issue.reviewed) {
+            analysisId = "list_node.issue_analysis_node.reviewed";
+        } else if (issue.audited != null && issue.audited) {
+            analysisId = "list_node.issue_analysis_node.reviewed";
+        }
+        if (analysisId != null) {
+            octaneIssue.setAnalysis(createListNodeEntity(dtoFactory, analysisId));
+        }
+
+    }
+
+    private void setOctaneStatus(DTOFactory dtoFactory, Issues.Issue issue, OctaneIssue octaneIssue) {
+        if (issue.scanStatus != null) {
+            String listNodeId = "list_node.issue_state_node." + issue.scanStatus.toLowerCase();
+            if (isLegalOctaneState(listNodeId)) {
+                octaneIssue.setState(createListNodeEntity(dtoFactory, listNodeId));
+            }
+        }
+        if(issue.removed != null && issue.removed){
+            octaneIssue.setState(createListNodeEntity(dtoFactory, "list_node.issue_state_node.closed"));
+        }
+    }
+
+    private boolean isLegalOctaneState(String scanStatus) {
+        List<String> legalNames = Arrays.asList("list_node.issue_state_node.new",
+                "list_node.issue_state_node.existing",
+                "list_node.issue_state_node.closed",
+                "list_node.issue_state_node.reopen");
+        return (legalNames.contains(scanStatus));
+    }
+
+    private Map getExtendedData(Issues.Issue issue) {
+        Map retVal = new HashMap();
+        retVal.put("issueName", issue.issueName);
+        retVal.put("likelihood", issue.likelihood);
+        retVal.put("kingdom", issue.kingdom);
+        retVal.put("impact", issue.impact);
+        retVal.put("confidence", issue.confidance);
+        retVal.put("removedDate", issue.removedDate);
+        return retVal;
+    }
+
+    private void setOctaneSeverity(DTOFactory dtoFactory, Issues.Issue issue, OctaneIssue octaneIssue) {
+        if (issue.severity != null) {
+            String octaneSeverity = getOctaneSeverityFromSSCValue(issue.severity);
+            octaneIssue.setSeverity(createListNodeEntity(dtoFactory, octaneSeverity));
+        }
+    }
+    private String getOctaneSeverityFromSSCValue(String severity) {
+        if (severity == null) {
+            return null;
+        }
+        String logicalNameForSeverity = null;
+        if (severity.startsWith("4")) {
+            logicalNameForSeverity = SEVERITY_LG_NAME_CRITICAL;
+        }
+        if (severity.startsWith("3")) {
+            logicalNameForSeverity = SEVERITY_LG_NAME_HIGH;
+        }
+        if (severity.startsWith("2")) {
+            logicalNameForSeverity = SEVERITY_LG_NAME_MEDIUM;
+        }
+        if (severity.startsWith("1")) {
+            logicalNameForSeverity = SEVERITY_LG_NAME_LOW;
+        }
+
+        return logicalNameForSeverity;
+
+    }
+    private static Entity createListNodeEntity(DTOFactory dtoFactory, String id) {
+        if(id == null){
+            return null;
+        }
+        return dtoFactory.newDTO(Entity.class).setType("list_node").setId(id);
     }
 
 
@@ -122,39 +260,6 @@ public class SSCHandler {
         return null;
     }
 
-    private Map getExtendedData(Issues.Issue issue) {
-        Map retVal = new HashMap();
-        retVal.put("issueName", issue.issueName);
-        retVal.put("likelihood", issue.likelihood);
-        retVal.put("kingdom", issue.kingdom);
-        retVal.put("impact", issue.impact);
-        retVal.put("confidence", issue.confidance);
-        retVal.put("removedDate", issue.removedDate);
-        return retVal;
-    }
-
-
-    private static Entity createListNodeEntity(DTOFactory dtoFactory, String id) {
-        return dtoFactory.newDTO(Entity.class).setType("list_node").setId(id);
-    }
-
-
-
-    private boolean isSSCProject(Run r) {
-        if (!(r instanceof AbstractBuild)) {
-            return false;
-        }
-        AbstractProject project = ((AbstractBuild) r).getProject();
-        for (Object publisherO : project.getPublishersList()) {
-            if (publisherO instanceof Publisher) {
-                Publisher publisher = (Publisher) publisherO;
-                publisher.getClass().getName().equals(
-                        "com.fortify.plugin.jenkins.FPRPublisher");
-                return true;
-            }
-        }
-        return false;
-    }
     private ProjectVersion getProjectVersion() {
         AbstractProject project = ((AbstractBuild) run).getProject();
         for (Object publisherO : project.getPublishersList()) {
