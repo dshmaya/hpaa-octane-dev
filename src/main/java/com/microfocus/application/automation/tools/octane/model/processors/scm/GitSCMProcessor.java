@@ -149,17 +149,12 @@ class GitSCMProcessor implements SCMProcessor {
                 throw new NoMergeBaseException(NoMergeBaseException.MergeBaseFailureReason.MULTIPLE_MERGE_BASES_NOT_SUPPORTED,
                         MessageFormat.format(JGitText.get().multipleMergeBasesFor, currentBranchCommit.name(), masterCommit.name(), base.name(), base2.name()));
             }
-            //in order to return actual revision and not merge commit
-            while (base.getParents().length>1){
-                RevCommit base_1 = base.getParent(0);
-                RevCommit base_2 = base.getParent(1);
-                if(base_1.getParents().length==1){
-                    base = base_1;
-                }else{
-                    base = base_2;
-                }
+            if(base.getParents().length>1){
+                base = base.getParent(0);
             }
             return base.getId().getName();
+
+
         }
     }
 
