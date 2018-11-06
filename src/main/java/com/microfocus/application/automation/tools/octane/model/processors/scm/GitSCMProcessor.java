@@ -160,8 +160,6 @@ class GitSCMProcessor implements SCMProcessor {
                 }
             }
             return base.getId().getName();
-
-
         }
     }
 
