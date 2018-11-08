@@ -266,6 +266,7 @@ namespace HpToolsLauncher
                         runResult.TestState = TestState.Error;
                         runResult.ErrorDesc = ex.Message;
                         runResult.TestName = test.TestName;
+                        runResult.TestPath = test.TestPath;
                     }
 
                     //get the original source for this test, for grouping tests under test classes
@@ -424,7 +425,9 @@ namespace HpToolsLauncher
             //if timeout has passed
             if (_stopwatch.Elapsed > _timeout && !_blnRunCancelled)
             {
+                ConsoleWriter.WriteLine(Resources.SmallDoubleSeparator);
                 ConsoleWriter.WriteLine(Resources.GeneralTimedOut);
+                ConsoleWriter.WriteLine(Resources.SmallDoubleSeparator);
 
                 Launcher.ExitCode = Launcher.ExitCodeEnum.Aborted;
                 _blnRunCancelled = true;
