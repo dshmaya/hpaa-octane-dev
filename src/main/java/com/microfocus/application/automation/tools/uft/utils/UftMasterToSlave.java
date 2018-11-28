@@ -19,35 +19,19 @@
  * ___________________________________________________________________
  *
  */
-package com.microfocus.application.automation.tools.octane.executor.scmmanager;
 
-import com.cloudbees.plugins.credentials.common.StandardCredentials;
-import com.hp.octane.integrations.dto.connectivity.OctaneResponse;
-import com.hp.octane.integrations.dto.executor.TestConnectivityInfo;
-import com.hp.octane.integrations.dto.scm.SCMRepository;
-import com.hp.octane.integrations.dto.scm.SCMType;
-import hudson.model.FreeStyleProject;
-import hudson.model.Job;
-import hudson.scm.ChangeLogSet;
-import hudson.scm.SCM;
+package com.microfocus.application.automation.tools.uft.utils;
 
+import hudson.remoting.VirtualChannel;
+import jenkins.MasterToSlaveFileCallable;
+
+import java.io.File;
 import java.io.IOException;
+import java.util.List;
 
-public interface ScmPluginHandler {
-
-    void setScmRepositoryInJob(SCMRepository scmRepository, String scmRepositoryCredentialsId, FreeStyleProject proj, boolean executorJob) throws IOException;
-
-    String getSharedCheckOutDirectory(Job j);
-
-    void checkRepositoryConnectivity(TestConnectivityInfo testConnectivityInfo, StandardCredentials credentials, OctaneResponse result);
-
-    String getChangeSetSrc(ChangeLogSet.AffectedFile affectedFile);
-
-    String getChangeSetDst(ChangeLogSet.AffectedFile affectedFile);
-
-    String getScmRepositoryUrl(SCM scm);
-
-    String getScmRepositoryCredentialsId(SCM scm);
-
-    SCMType getScmType();
+public class UftMasterToSlave extends MasterToSlaveFileCallable<List<String>> {
+    @Override
+    public List<String> invoke(File f, VirtualChannel channel) throws IOException, InterruptedException {
+        return UftToolUtils.listFilesForFolder(f);
+    }
 }
