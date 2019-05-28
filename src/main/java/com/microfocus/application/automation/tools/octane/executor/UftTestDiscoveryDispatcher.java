@@ -1,23 +1,21 @@
 /*
- *
- *  Certain versions of software and/or documents (“Material”) accessible here may contain branding from
- *  Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
- *  the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
- *  and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
- *  marks are the property of their respective owners.
+ * Certain versions of software and/or documents ("Material") accessible here may contain branding from
+ * Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
+ * the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
+ * and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
+ * marks are the property of their respective owners.
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2018 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
  *
  * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors (“Micro Focus”) are set forth in the express warranty statements
+ * and licensors ("Micro Focus") are set forth in the express warranty statements
  * accompanying such products and services. Nothing herein should be construed as
  * constituting an additional warranty. Micro Focus shall not be liable for technical
  * or editorial errors or omissions contained herein.
  * The information contained herein is subject to change without notice.
  * ___________________________________________________________________
- *
  */
 
 package com.microfocus.application.automation.tools.octane.executor;
@@ -33,6 +31,7 @@ import com.hp.octane.integrations.uft.UftTestDispatchUtils;
 import com.hp.octane.integrations.uft.items.*;
 import com.hp.octane.integrations.utils.SdkStringUtils;
 import com.microfocus.application.automation.tools.octane.ResultQueue;
+import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.tests.AbstractSafeLoggingAsyncPeriodWork;
 import hudson.Extension;
 import hudson.FilePath;
@@ -43,10 +42,8 @@ import hudson.model.TaskListener;
 import jenkins.model.Jenkins;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-import javax.xml.bind.JAXBException;
 import java.io.File;
 import java.io.IOException;
 import java.util.*;
@@ -61,8 +58,7 @@ import java.util.concurrent.TimeUnit;
  */
 @Extension
 public class UftTestDiscoveryDispatcher extends AbstractSafeLoggingAsyncPeriodWork {
-
-	private final static Logger logger = LogManager.getLogger(UftTestDiscoveryDispatcher.class);
+	private final static Logger logger = SDKBasedLoggerProvider.getLogger(UftTestDiscoveryDispatcher.class);
 
 	private final static int MAX_DISPATCH_TRIALS = 5;
 	private static final String OCTANE_VERSION_SUPPORTING_TEST_RENAME = "12.60.3";
@@ -96,7 +92,7 @@ public class UftTestDiscoveryDispatcher extends AbstractSafeLoggingAsyncPeriodWo
 		try {
 			while ((item = queue.peekFirst()) != null) {
 
-				Job project = (Job) Jenkins.getInstance().getItemByFullName(item.getProjectName());
+				Job project = (Job) Jenkins.get().getItemByFullName(item.getProjectName());
 				if (project == null) {
 					logger.warn("Project [" + item.getProjectName() + "] no longer exists, pending discovered tests can't be submitted");
 					queue.remove();
@@ -176,7 +172,7 @@ public class UftTestDiscoveryDispatcher extends AbstractSafeLoggingAsyncPeriodWo
 		}
 
 		//publish final results
-		FreeStyleProject project = (FreeStyleProject) Jenkins.getInstance().getItemByFullName(item.getProjectName());
+		FreeStyleProject project = (FreeStyleProject) Jenkins.get().getItemByFullName(item.getProjectName());
 		FilePath subWorkspace = project.getWorkspace().child("_Final_Detection_Results");
 		try {
 			if (!subWorkspace.exists()) {

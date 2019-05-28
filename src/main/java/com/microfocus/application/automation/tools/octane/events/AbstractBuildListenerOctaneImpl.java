@@ -1,16 +1,16 @@
 /*
- *  Certain versions of software and/or documents (“Material”) accessible here may contain branding from
- *  Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
- *  the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
- *  and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
- *  marks are the property of their respective owners.
+ * Certain versions of software and/or documents ("Material") accessible here may contain branding from
+ * Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
+ * the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
+ * and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
+ * marks are the property of their respective owners.
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2018 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
  *
  * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors (“Micro Focus”) are set forth in the express warranty statements
+ * and licensors ("Micro Focus") are set forth in the express warranty statements
  * accompanying such products and services. Nothing herein should be construed as
  * constituting an additional warranty. Micro Focus shall not be liable for technical
  * or editorial errors or omissions contained herein.
@@ -28,6 +28,7 @@ import com.hp.octane.integrations.dto.events.PhaseType;
 import com.hp.octane.integrations.dto.pipelines.PipelineNode;
 import com.hp.octane.integrations.dto.pipelines.PipelinePhase;
 import com.microfocus.application.automation.tools.octane.CIJenkinsServicesImpl;
+import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.model.CIEventCausesFactory;
 import com.microfocus.application.automation.tools.octane.model.processors.parameters.ParameterProcessors;
 import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
@@ -41,7 +42,6 @@ import hudson.model.*;
 import hudson.model.listeners.RunListener;
 import hudson.scm.SCM;
 import jenkins.model.Jenkins;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.util.Collection;
@@ -57,7 +57,7 @@ import java.util.List;
 @Extension
 @SuppressWarnings({"squid:S2259", "squid:S1872", "squid:S1698", "squid:S1132"})
 public final class AbstractBuildListenerOctaneImpl extends RunListener<AbstractBuild> {
-	private static final Logger logger = LogManager.getLogger(AbstractBuildListenerOctaneImpl.class);
+	private static final Logger logger = SDKBasedLoggerProvider.getLogger(AbstractBuildListenerOctaneImpl.class);
 	private static final DTOFactory dtoFactory = DTOFactory.getInstance();
 
 	@Inject
@@ -143,12 +143,12 @@ public final class AbstractBuildListenerOctaneImpl extends RunListener<AbstractB
 
 		if (upstreamCause != null) {
 			String causeJobName = upstreamCause.getUpstreamProject();
-			TopLevelItem parent = Jenkins.getInstance().getItem(causeJobName);
+			TopLevelItem parent = Jenkins.get().getItem(causeJobName);
 			if (parent == null) {
 				if (causeJobName.contains("/") && !causeJobName.contains(",")) {
-					parent = getJobFromFolder(causeJobName);
-					if (parent == null) {
-						result = false;
+					Job parentJob = getJobFromFolder(causeJobName);
+					if (parentJob != null) {
+						result = true;
 					}
 				}
 			} else {
@@ -170,14 +170,14 @@ public final class AbstractBuildListenerOctaneImpl extends RunListener<AbstractB
 		return result;
 	}
 
-	private static TopLevelItem getJobFromFolder(String causeJobName) {
+	private static Job getJobFromFolder(String causeJobName) {
 		String newJobRefId = causeJobName.substring(0, causeJobName.indexOf('/'));
-		TopLevelItem item = Jenkins.getInstance().getItem(newJobRefId);
+		TopLevelItem item = Jenkins.get().getItem(newJobRefId);
 		if (item != null) {
 			Collection<? extends Job> allJobs = item.getAllJobs();
 			for (Job job : allJobs) {
 				if (causeJobName.endsWith(job.getName())) {
-					return (TopLevelItem) job;
+					return job;
 				}
 			}
 			return null;

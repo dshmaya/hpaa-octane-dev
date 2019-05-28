@@ -1,23 +1,21 @@
 /*
- *
- *  Certain versions of software and/or documents (“Material”) accessible here may contain branding from
- *  Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
- *  the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
- *  and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
- *  marks are the property of their respective owners.
+ * Certain versions of software and/or documents ("Material") accessible here may contain branding from
+ * Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
+ * the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
+ * and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
+ * marks are the property of their respective owners.
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2018 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
  *
  * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors (“Micro Focus”) are set forth in the express warranty statements
+ * and licensors ("Micro Focus") are set forth in the express warranty statements
  * accompanying such products and services. Nothing herein should be construed as
  * constituting an additional warranty. Micro Focus shall not be liable for technical
  * or editorial errors or omissions contained herein.
  * The information contained herein is subject to change without notice.
  * ___________________________________________________________________
- *
  */
 
 
@@ -26,7 +24,8 @@ package com.microfocus.application.automation.tools.octane.testrunner;
 import com.hp.octane.integrations.executor.TestsToRunConverterResult;
 import com.hp.octane.integrations.executor.TestsToRunConvertersFactory;
 import com.hp.octane.integrations.executor.TestsToRunFramework;
-import com.microfocus.application.automation.tools.model.EnumDescription;
+import com.hp.octane.integrations.utils.SdkStringUtils;
+import com.microfocus.application.automation.tools.model.TestsFramework;
 import com.microfocus.application.automation.tools.octane.executor.UftConstants;
 import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
 import hudson.Extension;
@@ -50,7 +49,7 @@ import java.util.List;
  */
 public class TestsToRunConverterBuilder extends Builder implements SimpleBuildStep {
 
-	private TestsToRunConverterModel framework;
+	private TestsToRunConverterModel frameworkModel;
 
 	private final String TESTS_TO_RUN_PARAMETER = "testsToRun";
 	private final String TESTS_TO_RUN_CONVERTED_PARAMETER = "testsToRunConverted";
@@ -58,9 +57,19 @@ public class TestsToRunConverterBuilder extends Builder implements SimpleBuildSt
 	private final String DEFAULT_EXECUTING_DIRECTORY = "${workspace}";
 	private final String CHECKOUT_DIRECTORY_PARAMETER = "testsToRunCheckoutDirectory";
 
+	public TestsToRunConverterBuilder(String value) {
+		TestsFramework testFramework = new TestsFramework(value);
+		this.frameworkModel = new TestsToRunConverterModel(testFramework);
+	}
+
+	public TestsToRunConverterBuilder(TestsFramework framework) {
+		this.frameworkModel = new TestsToRunConverterModel(framework);
+	}
+
 	@DataBoundConstructor
-	public TestsToRunConverterBuilder(String framework) {
-		this.framework = new TestsToRunConverterModel(framework);
+	public TestsToRunConverterBuilder(String framework, String format, String delimiter) {
+		TestsFramework testFramework = new TestsFramework(framework, "", format, delimiter);
+		this.frameworkModel = new TestsToRunConverterModel(testFramework);
 	}
 
 	@Override
@@ -99,13 +108,26 @@ public class TestsToRunConverterBuilder extends Builder implements SimpleBuildSt
 			printToConsole(listener, TESTS_TO_RUN_PARAMETER + " is not found or has empty value. Skipping.");
 			return;
 		}
-		if (StringUtils.isEmpty(getFramework())) {
-			printToConsole(listener, "No framework is selected. Skipping.");
+
+		TestsFramework framework = getTestsToRunConverterModel().getFramework();
+		String frameworkName = framework.getValue();
+		if (StringUtils.isEmpty(frameworkName)) {
+			printToConsole(listener, "No frameworkModel is selected. Skipping.");
 			return;
 		}
 
-		TestsToRunFramework testsToRunFramework = TestsToRunFramework.fromValue(getFramework());
-		TestsToRunConverterResult convertResult = TestsToRunConvertersFactory.createConverter(testsToRunFramework).convert(rawTests, executingDirectory);
+		String frameworkFormat = framework.getFormat();
+		String frameworkDelimiter = framework.getDelimiter();
+		printToConsole(listener, "Selected framework = " + frameworkName);
+		if (SdkStringUtils.isNotEmpty(frameworkFormat)) {
+			printToConsole(listener, "Using format = " + frameworkFormat);
+			printToConsole(listener, "Using delimiter = " + frameworkDelimiter);
+		}
+
+		TestsToRunFramework testsToRunFramework = TestsToRunFramework.fromValue(frameworkName);
+		TestsToRunConverterResult convertResult = TestsToRunConvertersFactory.createConverter(testsToRunFramework)
+				.setProperties(framework.getProperties())
+				.convert(rawTests, executingDirectory);
 		printToConsole(listener, "Found #tests : " + convertResult.getTestsData().size());
 		printToConsole(listener, TESTS_TO_RUN_CONVERTED_PARAMETER + " = " + convertResult.getConvertedTestsString());
 
@@ -122,15 +144,11 @@ public class TestsToRunConverterBuilder extends Builder implements SimpleBuildSt
 
 
 	public TestsToRunConverterModel getTestsToRunConverterModel() {
-		return framework;
+		return frameworkModel;
 	}
 
 	private void printToConsole(TaskListener listener, String msg) {
 		listener.getLogger().println(this.getClass().getSimpleName() + " : " + msg);
-	}
-
-	public String getFramework() {
-		return framework.getFramework();
 	}
 
 	@Symbol("convertTestsToRun")
@@ -152,7 +170,7 @@ public class TestsToRunConverterBuilder extends Builder implements SimpleBuildSt
 		 *
 		 * @return the report archive modes
 		 */
-		public List<EnumDescription> getFrameworks() {
+		public List<TestsFramework> getFrameworks() {
 
 			return TestsToRunConverterModel.Frameworks;
 		}

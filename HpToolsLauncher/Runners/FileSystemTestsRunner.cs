@@ -8,7 +8,7 @@
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2018 Micro Focus or one of its affiliates.
+ * © Copyright 2012-2019 Micro Focus or one of its affiliates..
  *
  * The only warranties for products and services of Micro Focus and its affiliates
  * and licensors (“Micro Focus”) are set forth in the express warranty statements
@@ -215,7 +215,7 @@ namespace HpToolsLauncher
                 //--handle single test dir, add it with no group
                 if (testGroup.Count == 1)
                 {
-                    testGroup[0].TestGroup = "<None>";
+                    testGroup[0].TestGroup = "Test group";
                 }
 
                 _tests.AddRange(testGroup);

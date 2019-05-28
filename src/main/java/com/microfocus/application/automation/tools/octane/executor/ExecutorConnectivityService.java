@@ -1,23 +1,21 @@
 /*
- *
- *  Certain versions of software and/or documents (“Material”) accessible here may contain branding from
- *  Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
- *  the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
- *  and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
- *  marks are the property of their respective owners.
+ * Certain versions of software and/or documents ("Material") accessible here may contain branding from
+ * Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
+ * the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
+ * and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
+ * marks are the property of their respective owners.
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2018 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
  *
  * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors (“Micro Focus”) are set forth in the express warranty statements
+ * and licensors ("Micro Focus") are set forth in the express warranty statements
  * accompanying such products and services. Nothing herein should be construed as
  * constituting an additional warranty. Micro Focus shall not be liable for technical
  * or editorial errors or omissions contained herein.
  * The information contained herein is subject to change without notice.
  * ___________________________________________________________________
- *
  */
 
 package com.microfocus.application.automation.tools.octane.executor;
@@ -34,6 +32,7 @@ import com.hp.octane.integrations.dto.DTOFactory;
 import com.hp.octane.integrations.dto.connectivity.OctaneResponse;
 import com.hp.octane.integrations.dto.executor.CredentialsInfo;
 import com.hp.octane.integrations.dto.executor.TestConnectivityInfo;
+import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.executor.scmmanager.ScmPluginFactory;
 import com.microfocus.application.automation.tools.octane.executor.scmmanager.ScmPluginHandler;
 import hudson.model.Item;
@@ -42,20 +41,17 @@ import hudson.security.Permission;
 import jenkins.model.Jenkins;
 import org.apache.commons.lang.StringUtils;
 import org.apache.http.HttpStatus;
-import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
-
 /**
  * Utility for handling connectivity with scm repositories
  */
 public class ExecutorConnectivityService {
-
-	private static final Logger logger = LogManager.getLogger(ExecutorConnectivityService.class);
+	private static final Logger logger = SDKBasedLoggerProvider.getLogger(ExecutorConnectivityService.class);
 	private static final Map<Permission, String> requirePremissions = initRequirePremissions();
 	private static final Map<Permission, String> credentialsPremissions = initCredentialsPremissions();
 	private static final String PLUGIN_NAME = "Application Automation Tools";

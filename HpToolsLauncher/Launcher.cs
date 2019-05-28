@@ -8,7 +8,7 @@
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2018 Micro Focus or one of its affiliates.
+ * © Copyright 2012-2019 Micro Focus or one of its affiliates..
  *
  * The only warranties for products and services of Micro Focus and its affiliates
  * and licensors ("Micro Focus") are set forth in the express warranty statements
@@ -28,9 +28,12 @@ using System.Text;
 using HpToolsLauncher.Properties;
 using HpToolsLauncher.TestRunners;
 using HpToolsLauncher.RTS;
+using System.IO;
+using System.Xml.Serialization;
 
 namespace HpToolsLauncher
 {
+  
     public enum CIName
     {
         Hudson,
@@ -98,13 +101,19 @@ namespace HpToolsLauncher
         private static ExitCodeEnum _exitCode = ExitCodeEnum.Passed;
         private static string _dateFormat = "dd/MM/yyyy HH:mm:ss";
         private static bool rerunFailedTests = false;
+        XmlSerializer _serializer = new XmlSerializer(typeof(testsuites));
+
+        testsuites _testSuites = new testsuites();
+
+        public const string ClassName = "HPToolsFileSystemRunner";
+
 
         public static string DateFormat
         {
             get { return Launcher._dateFormat; }
             set { Launcher._dateFormat = value; }
         }
-
+        
         /// <summary>
         /// if running an alm job theses strings are mandatory:
         /// </summary>
@@ -255,10 +264,11 @@ namespace HpToolsLauncher
                 UniqueTimeStamp = resultsFilename.ToLower().Replace("results", "").Replace(".xml", "");
             }
 
+            bool initialTestRun = true;
 
             //run the entire set of test once
             //create the runner according to type
-            IAssetRunner runner = CreateRunner(_runtype, _ciParams);
+            IAssetRunner runner = CreateRunner(_runtype, _ciParams, initialTestRun);
 
             //runner instantiation failed (no tests to run or other problem)
             if (runner == null)
@@ -266,37 +276,62 @@ namespace HpToolsLauncher
                 Environment.Exit((int)Launcher.ExitCodeEnum.Failed);
             }
 
-            RunTests(runner, resultsFilename);
+            TestSuiteRunResults results = runner.Run();
 
+            RunTests(runner, resultsFilename, results);
 
-            string onCheckFailedTests = (_ciParams.ContainsKey("onCheckFailedTest") ? _ciParams["onCheckFailedTest"] : "");
-
-            if (string.IsNullOrEmpty(onCheckFailedTests))
+       
+            if (_runtype.Equals(TestStorageType.Alm))
             {
-                rerunFailedTests = false;
-            }
-            else
-            {
-                rerunFailedTests = Convert.ToBoolean(onCheckFailedTests.ToLower());
-            }
+                bool filterSelected;
+                string filter = (_ciParams.ContainsKey("FilterTests") ? _ciParams["FilterTests"] : "");
 
-          
-            //the "On failure" option is selected and the run build contains failed tests
-            if (rerunFailedTests.Equals(true) && Launcher.ExitCode != ExitCodeEnum.Passed)
-            {
-                ConsoleWriter.WriteLine("There are failed tests. Rerun the selected tests.");
-                
-                //rerun the selected tests (either the entire set or just the selected ones)
-                //create the runner according to type
-                runner = CreateRunner(_runtype, _ciParams);
-
-                //runner instantiation failed (no tests to run or other problem)
-                if (runner == null)
+                if (string.IsNullOrEmpty(filter))
                 {
-                    Environment.Exit((int)Launcher.ExitCodeEnum.Failed);
+                    filterSelected = false;
+                }
+                else
+                {
+                    filterSelected = Convert.ToBoolean(filter.ToLower());
                 }
 
-                RunTests(runner, resultsFilename);
+            }
+
+            if (_runtype.Equals(TestStorageType.FileSystem))
+            {
+                string onCheckFailedTests = (_ciParams.ContainsKey("onCheckFailedTest") ? _ciParams["onCheckFailedTest"] : "");
+
+                if (string.IsNullOrEmpty(onCheckFailedTests))
+                {
+                    rerunFailedTests = false;
+                }
+                else
+                {
+                    rerunFailedTests = Convert.ToBoolean(onCheckFailedTests.ToLower());
+                }
+
+
+                //the "On failure" option is selected and the run build contains failed tests
+                if (rerunFailedTests.Equals(true) && Launcher.ExitCode != ExitCodeEnum.Passed)
+                {
+                    ConsoleWriter.WriteLine("There are failed tests. Rerun the selected tests.");
+
+                    initialTestRun = false;
+
+                    //rerun the selected tests (either the entire set or just the selected ones)
+                    //create the runner according to type
+                    runner = CreateRunner(_runtype, _ciParams, initialTestRun);
+
+                    //runner instantiation failed (no tests to run or other problem)
+                    if (runner == null)
+                    {
+                        Environment.Exit((int)Launcher.ExitCodeEnum.Failed);
+                    }
+
+                    TestSuiteRunResults rerunResults = runner.Run();
+                    results.AppendResults(rerunResults);
+                    RunTests(runner, resultsFilename, results);
+                }
             }
   
             //Console.WriteLine("Press any key to exit...");
@@ -311,7 +346,7 @@ namespace HpToolsLauncher
         /// </summary>
         /// <param name="runType"></param>
         /// <param name="ciParams"></param>
-        IAssetRunner CreateRunner(TestStorageType runType, JavaProperties ciParams)
+        IAssetRunner CreateRunner(TestStorageType runType, JavaProperties ciParams, bool initialTestRun)
         {
             IAssetRunner runner = null;
             switch (runType)
@@ -344,7 +379,7 @@ namespace HpToolsLauncher
                         enmQcRunMode = QcRunMode.RUN_LOCAL;
                     }
                     ConsoleWriter.WriteLine(string.Format(Resources.LauncherDisplayRunmode, enmQcRunMode.ToString()));
-
+                   
                     //go over testsets in the parameters, and collect them
                     List<string> sets = GetParamsWithPrefix("TestSet");
 
@@ -354,6 +389,36 @@ namespace HpToolsLauncher
                         return null;
                     }
 
+                    //check if filterTests flag is selected; if yes apply filters on the list
+                    bool isFilterSelected;
+                    string filter = (_ciParams.ContainsKey("FilterTests") ? _ciParams["FilterTests"] : "");
+
+                    if (string.IsNullOrEmpty(filter))
+                    {
+                        isFilterSelected = false;
+                    }
+                    else
+                    {
+                        isFilterSelected = Convert.ToBoolean(filter.ToLower());
+                    }
+                    
+                    string filterByName = (_ciParams.ContainsKey("FilterByName") ? _ciParams["FilterByName"] : "");
+
+                    string statuses = (_ciParams.ContainsKey("FilterByStatus") ? _ciParams["FilterByStatus"] : "");
+
+                    List<string> filterByStatuses = new List<string>();
+
+                    if (statuses != "")
+                    {
+                        if (statuses.Contains(","))
+                        {
+                            filterByStatuses = statuses.Split(',').ToList();
+                        } else
+                        {
+                            filterByStatuses.Add(statuses);
+                        }
+                    }
+                   
                     //create an Alm runner
                     runner = new AlmTestSetsRunner(_ciParams["almServerUrl"],
                                      _ciParams["almUserName"],
@@ -363,7 +428,11 @@ namespace HpToolsLauncher
                                      dblQcTimeout,
                                      enmQcRunMode,
                                      _ciParams["almRunHost"],
-                                     sets);
+                                     sets,
+                                     isFilterSelected,
+                                     filterByName,
+                                     filterByStatuses,
+                                     initialTestRun);
                     break;
                 case TestStorageType.FileSystem:
                     //Get displayController var
@@ -743,8 +812,9 @@ namespace HpToolsLauncher
         /// </summary>
         /// <param name="runner"></param>
         /// <param name="resultsFile"></param>
-        private void RunTests(IAssetRunner runner, string resultsFile)
+        private void RunTests(IAssetRunner runner, string resultsFile, TestSuiteRunResults results)
         {
+
             try
             {
                 if (_ciRun)
@@ -753,12 +823,11 @@ namespace HpToolsLauncher
                     _xmlBuilder.XmlName = resultsFile;
                 }
 
-                TestSuiteRunResults results = runner.Run();
-
                 if (results == null)
                     Environment.Exit((int)Launcher.ExitCodeEnum.Failed);
-
+               
                 _xmlBuilder.CreateXmlFromRunResults(results);
+
 
                 //if there is an error
                 if (results.TestRuns.Any(tr => tr.TestState == TestState.Failed || tr.TestState == TestState.Error))
@@ -769,6 +838,7 @@ namespace HpToolsLauncher
                 int numFailures = results.TestRuns.Count(t => t.TestState == TestState.Failed);
                 int numSuccess = results.TestRuns.Count(t => t.TestState == TestState.Passed);
                 int numErrors = results.TestRuns.Count(t => t.TestState == TestState.Error);
+                int numWarnings = results.TestRuns.Count(t => t.TestState == TestState.Warning);
 
                 //TODO: Temporery fix to remove since jenkins doesnt retrive resutls from jobs that marked as failed and unstable marks jobs with only failed tests
                 if ((numErrors <= 0) && (numFailures > 0))
@@ -808,7 +878,7 @@ namespace HpToolsLauncher
                 }
 
                 ConsoleWriter.WriteLine(Resources.LauncherDoubleSeperator);
-                ConsoleWriter.WriteLine(string.Format(Resources.LauncherDisplayStatistics, runStatus, results.TestRuns.Count, numSuccess, numFailures, numErrors));
+                ConsoleWriter.WriteLine(string.Format(Resources.LauncherDisplayStatistics, runStatus, results.TestRuns.Count, numSuccess, numFailures, numErrors, numWarnings));
 
                 if (!runner.RunWasCancelled)
                 {
