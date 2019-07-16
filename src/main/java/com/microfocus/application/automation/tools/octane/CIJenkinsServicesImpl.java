@@ -115,7 +115,7 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 
 	@Override
 	public File getAllowedOctaneStorage() {
-		return new File(Jenkins.get().getRootDir(), "userContent");
+		return getAllowedStorageFile();
 	}
 
 	@Override
@@ -685,26 +685,21 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 	private Job getJobByRefId(String jobRefId) {
 		Job result = null;
 		if (jobRefId != null) {
-			try {
-				jobRefId = URLDecoder.decode(jobRefId, StandardCharsets.UTF_8.name());
-				TopLevelItem item = getTopLevelItem(jobRefId);
-				if (item instanceof Job) {
-					result = (Job) item;
-				} else if (jobRefId.contains("/") && item == null) {
-					String newJobRefId = jobRefId.substring(0, jobRefId.indexOf("/"));
-					item = getTopLevelItem(newJobRefId);
-					if (item != null) {
-						Collection<? extends Job> allJobs = item.getAllJobs();
-						for (Job job : allJobs) {
-							if (jobRefId.endsWith(job.getName())) {
-								result = job;
-								break;
-							}
+			TopLevelItem item = getTopLevelItem(jobRefId);
+			if (item instanceof Job) {
+				result = (Job) item;
+			} else if (jobRefId.contains("/") && item == null) {
+				String parentJobRefId = jobRefId.substring(0, jobRefId.indexOf('/'));
+				item = getTopLevelItem(parentJobRefId);
+				if (item != null) {
+					Collection<? extends Job> allJobs = item.getAllJobs();
+					for (Job job : allJobs) {
+						if (jobRefId.endsWith(job.getName())) {
+							result = job;
+							break;
 						}
 					}
 				}
-			} catch (UnsupportedEncodingException uee) {
-				logger.error("failed to decode job ref ID '" + jobRefId + "'", uee);
 			}
 		}
 		return result;
@@ -774,6 +769,11 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		}
 		return item;
 	}
+
+    public static File getAllowedStorageFile() {
+        Jenkins jenkins = Jenkins.getInstanceOrNull();
+        return (jenkins == null /*is slave*/) ? new File("octanePluginContent") : new File(jenkins.getRootDir(), "userContent") ;
+    }
 
 	public static CIServerInfo getJenkinsServerInfo() {
 		CIServerInfo result = dtoFactory.newDTO(CIServerInfo.class);

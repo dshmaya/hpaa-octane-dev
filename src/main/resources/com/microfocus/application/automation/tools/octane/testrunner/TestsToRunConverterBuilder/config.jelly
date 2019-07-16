@@ -25,7 +25,7 @@
     <f:entry title="Testing framework" field="framework">
         <select name="teststorunconverter.framework" onchange="selectionChanged(this)">
              <j:forEach var="myFramework" items="${descriptor.Frameworks}">
-                  <f:option selected="${myFramework.value == instance.testsToRunConverterModel.framework.value}" value="${myFramework.value}">
+                  <f:option selected="${myFramework.name == instance.testsToRunConverterModel.framework.name}" value="${myFramework.name}">
                         ${myFramework.description}
                   </f:option>
              </j:forEach>
@@ -33,29 +33,41 @@
     </f:entry>
 
     <j:forEach var="myFramework" items="${descriptor.Frameworks}">
-        <f:textbox id="format+${myFramework.value}" value="${myFramework.format}" hidden="hidden"/>
-        <f:textbox id="delimiter+${myFramework.value}" value="${myFramework.delimiter}" hidden="hidden"/>
+        <f:textbox id="format+${myFramework.name}" value="${myFramework.format}" hidden="hidden"/>
+        <f:textbox id="delimiter+${myFramework.name}" value="${myFramework.delimiter}" hidden="hidden"/>
     </j:forEach>
 
 
-    <j:if test="${instance.testsToRunConverterModel.framework.value == 'custom'}">
+    <j:if test="${instance.testsToRunConverterModel.framework.name == 'custom'}">
         <f:entry title="Format" field="format" >
-            <f:textbox id="format" name="teststorunconverter.format" value="${instance.testsToRunConverterModel.framework.format}" />
+            <textarea id="format" name="teststorunconverter.format" type="text" class="setting-input" style="resize: vertical; min-height:30px;">
+                ${instance.testsToRunConverterModel.framework.format}
+            </textarea>
         </f:entry>
 
         <f:entry title="Delimiter" field="delimiter" >
             <f:textbox id="delimiter" name="teststorunconverter.delimiter" value="${instance.testsToRunConverterModel.framework.delimiter}" />
         </f:entry>
     </j:if>
-    <j:if test="${instance.testsToRunConverterModel.framework.value != 'custom'}">
-        <f:entry title="Format" field="format" >
-            <f:textbox id="format" name="teststorunconverter.format" value="${instance.testsToRunConverterModel.framework.format}" disabled="true"/>
+    <j:if test="${instance.testsToRunConverterModel.framework.name != 'custom'}">
+        <f:entry title="Format" field="format">
+            <textarea id="format" name="teststorunconverter.format" type="text" class="setting-input" disabled="true" style="resize: vertical; min-height:30px;">
+                ${instance.testsToRunConverterModel.framework.format}
+            </textarea>
         </f:entry>
 
         <f:entry title="Delimiter" field="delimiter" >
             <f:textbox id="delimiter" name="teststorunconverter.delimiter" value="${instance.testsToRunConverterModel.framework.delimiter}" disabled="true"/>
         </f:entry>
     </j:if>
+    <f:advanced>
+    <f:section title="Test conversion"/>
+    <f:entry title="Tests to run" description="Tests to run in raw format, for example : v1:package1|className1|testName1;package2|className2|testName2">
+      <f:textbox field="testsToRun" />
+    </f:entry>
+            <f:validateButton title="Convert" progress="Evaluating..."
+                    method="testConvert" with="framework,teststorunconverter.framework,teststorunconverter.format,teststorunconverter.delimiter,testsToRun"/>
+    </f:advanced>
 
     <script>
 
@@ -75,8 +87,8 @@
             var optionFormat = document.getElementById('format+' + y[x].value);
             var optionDelimiter = document.getElementById('delimiter+' + y[x].value);
 
-            txtFormat.value = optionFormat.value;
-            txtDelimiter.value = optionDelimiter.value;
+            txtFormat.value = optionFormat ? optionFormat.value : "";
+            txtDelimiter.value = optionDelimiter ? optionDelimiter.value : "";
         }
 
     </script>
