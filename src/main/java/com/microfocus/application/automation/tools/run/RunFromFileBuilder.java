@@ -654,7 +654,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
                 mergedProperties.put("MobilePassword", encPassword);
             } catch (Exception e) {
                 build.setResult(Result.FAILURE);
-                listener.fatalError("problem in mobile center password encryption" + e);
+                listener.fatalError("problem in UFT Mobile password encryption" + e);
             }
         }
 
@@ -691,7 +691,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
         }
 
         if (scriptRTSSetModel != null) {
-            scriptRTSSetModel.addScriptsToProps(mergedProperties);
+            scriptRTSSetModel.addScriptsToProps(mergedProperties, env);
         }
 
         if(uftSettingsModel != null) {
