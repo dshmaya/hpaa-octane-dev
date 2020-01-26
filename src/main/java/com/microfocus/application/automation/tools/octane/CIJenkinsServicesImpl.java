@@ -64,6 +64,7 @@ import com.microfocus.application.automation.tools.octane.tests.junit.JUnitExten
 import hudson.ProxyConfiguration;
 import hudson.console.PlainTextConsoleOutputStream;
 import hudson.matrix.MatrixConfiguration;
+import hudson.maven.MavenModule;
 import hudson.model.*;
 import hudson.security.ACLContext;
 import jenkins.model.Jenkins;
@@ -75,6 +76,7 @@ import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.http.HttpStatus;
 import org.apache.logging.log4j.Logger;
+import org.jenkinsci.plugins.workflow.job.WorkflowRun;
 
 import javax.xml.bind.DatatypeConverter;
 import java.io.*;
@@ -162,13 +164,10 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 				try {
 					Job tmpJob = (Job) Jenkins.get().getItemByFullName(tempJobName);
 
-					if (tmpJob == null) {
-						continue;
-					}
-					if (tmpJob instanceof AbstractProject && ((AbstractProject) tmpJob).isDisabled()) {
-						continue;
-					}
-					if (tmpJob instanceof MatrixConfiguration) {
+					if (tmpJob == null ||
+							(tmpJob instanceof AbstractProject && ((AbstractProject) tmpJob).isDisabled()) ||
+							tmpJob instanceof MatrixConfiguration ||
+							tmpJob instanceof MavenModule) {
 						continue;
 					}
 
@@ -217,7 +216,7 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 					Item item = getItemByRefId(rootJobCiId);
 					//todo: check error message(s)
 					if (item != null && item.getClass().getName().equals(JobProcessorFactory.WORKFLOW_MULTI_BRANCH_JOB_NAME)) {
-						result = createPipelineNodeFromJobName(rootJobCiId);
+						result = createPipelineNodeFromJobName(item.getFullName());
 						result.setMultiBranchType(MultiBranchType.MULTI_BRANCH_PARENT);
 					} else {
 						logger.warn("Failed to get project from jobRefId: '" + rootJobCiId + "' check plugin user Job Read/Overall Read permissions / project name");
@@ -405,20 +404,27 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		try {
 			SSCProjectConfiguration result = null;
 			Run run = getRunByRefNames(jobId, buildId);
+			SSCServerConfigUtil.SSCProjectVersionPair projectVersionPair = null;
+
 			if (run instanceof AbstractBuild) {
-				String sscServerUrl = SSCServerConfigUtil.getSSCServer();
-				String sscAuthToken = ConfigurationService.getSettings(getInstanceId()).getSscBaseToken();
-				SSCServerConfigUtil.SSCProjectVersionPair projectVersionPair = SSCServerConfigUtil.getProjectConfigurationFromBuild((AbstractBuild) run);
-				if (sscServerUrl != null && !sscServerUrl.isEmpty() && projectVersionPair != null) {
-					result = dtoFactory.newDTO(SSCProjectConfiguration.class)
-							.setSSCUrl(sscServerUrl)
-							.setSSCBaseAuthToken(sscAuthToken)
-							.setProjectName(projectVersionPair.project)
-							.setProjectVersion(projectVersionPair.version);
-				}
+				projectVersionPair = SSCServerConfigUtil.getProjectConfigurationFromBuild((AbstractBuild) run);
+			} else if (run instanceof WorkflowRun) {
+				projectVersionPair = SSCServerConfigUtil.getProjectConfigurationFromWorkflowRun((WorkflowRun) run);
 			} else {
-				logger.error("build '" + jobId + " #" + buildId + "' (of specific type AbstractBuild) not found");
+				logger.error("build '" + jobId + " #" + buildId + "' (of specific type AbstractBuild or WorkflowRun) not found");
+				return result;
 			}
+
+			String sscServerUrl = SSCServerConfigUtil.getSSCServer();
+			String sscAuthToken = ConfigurationService.getSettings(getInstanceId()).getSscBaseToken();
+			if (sscServerUrl != null && !sscServerUrl.isEmpty() && projectVersionPair != null) {
+				result = dtoFactory.newDTO(SSCProjectConfiguration.class)
+						.setSSCUrl(sscServerUrl)
+						.setSSCBaseAuthToken(sscAuthToken)
+						.setProjectName(projectVersionPair.project)
+						.setProjectVersion(projectVersionPair.version);
+			}
+
 			return result;
 		} finally {
 			stopImpersonation(originalContext);
@@ -560,23 +566,24 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 
 	private PipelineNode createPipelineNodeFromJobName(String name) {
 		return dtoFactory.newDTO(PipelineNode.class)
-				.setJobCiId(name)
+				.setJobCiId(BuildHandlerUtils.translateFolderJobName(name))
 				.setName(name);
 	}
 
 	private InputStream getOctaneLogFile(Run run) {
 		InputStream result = null;
-		String octaneLogFilePath = run.getLogFile().getParent() + File.separator + "octane_log";
+		String octaneLogFilePath = run.getRootDir() + File.separator + "octane_log";
 		File logFile = new File(octaneLogFilePath);
 		if (!logFile.exists()) {
 			try (FileOutputStream fileOutputStream = new FileOutputStream(logFile);
-			     InputStream logStream = run.getLogInputStream();
-			     PlainTextConsoleOutputStream out = new PlainTextConsoleOutputStream(fileOutputStream)) {
+			    InputStream logStream = run.getLogInputStream();
+			    PlainTextConsoleOutputStream out = new PlainTextConsoleOutputStream(fileOutputStream)) {
 				IOUtils.copy(logStream, out);
 				out.flush();
 			} catch (IOException ioe) {
 				logger.error("failed to transfer native log to Octane's one for " + run);
 			}
+
 		}
 		try {
 			result = new FileInputStream(octaneLogFilePath);
@@ -764,11 +771,12 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 				}
 			} else {
 				Collection<? extends Job> allJobs = item.getAllJobs();
+				String untranslatedFolderItemRefId = BuildHandlerUtils.revertTranslateFolderJobName(itemRefId);
 				for (Job job : allJobs) {
-					if (JobProcessorFactory.WORKFLOW_MULTI_BRANCH_JOB_NAME.equals(job.getParent().getClass().getName()) &&
-							itemRefId.endsWith(job.getParent().getFullName())
-					) {
-						result = (Item) job.getParent();
+					if (JobProcessorFactory.WORKFLOW_MULTI_BRANCH_JOB_NAME.equals(job.getParent().getClass().getName())) {
+						if (itemRefId.endsWith(job.getParent().getFullName()) || untranslatedFolderItemRefId.endsWith(job.getParent().getFullName())) {
+							result = (Item) job.getParent();
+						}
 					} else {
 						if (itemRefId.endsWith(job.getName())) {
 							result = job;

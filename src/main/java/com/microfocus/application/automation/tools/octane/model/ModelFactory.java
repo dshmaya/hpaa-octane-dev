@@ -123,7 +123,7 @@ public class ModelFactory {
 		AbstractProjectProcessor projectProcessor = JobProcessorFactory.getFlowProcessor(job, processedJobs);
 		PipelineNode pipelineNode = dtoFactory.newDTO(PipelineNode.class);
 		pipelineNode.setJobCiId(projectProcessor.getTranslatedJobName());
-		pipelineNode.setName(job.getName());
+		pipelineNode.setName(BuildHandlerUtils.translateFullDisplayName(job.getFullDisplayName()));
 		pipelineNode.setParameters(ParameterProcessors.getConfigs(job));
 		pipelineNode.setPhasesInternal(projectProcessor.getInternals());
 		pipelineNode.setPhasesPostBuild(projectProcessor.getPostBuilds());
@@ -160,7 +160,7 @@ public class ModelFactory {
 		Map<String, List<Run>> result = new HashMap<>();
 		Job run;
 		for (String invokeeName : invokeesNames) {
-			run = (Job) Jenkins.getInstance().getItem(invokeeName);
+			run = (Job) Jenkins.getInstanceOrNull().getItem(invokeeName);
 			result.put(invokeeName, getInvokees(self, run));
 		}
 		return result;
