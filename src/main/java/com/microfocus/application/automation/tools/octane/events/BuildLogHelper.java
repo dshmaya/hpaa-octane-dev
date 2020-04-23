@@ -18,37 +18,36 @@
  * ___________________________________________________________________
  */
 
-package com.microfocus.application.automation.tools.octane.model.processors.projects;
+package com.microfocus.application.automation.tools.octane.events;
 
-import hudson.matrix.MatrixProject;
-import hudson.model.Job;
-import hudson.tasks.Builder;
+import com.hp.octane.integrations.OctaneSDK;
+import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
+import com.microfocus.application.automation.tools.octane.tests.build.BuildHandlerUtils;
+import hudson.model.Run;
+import org.apache.logging.log4j.Logger;
 
-import java.util.List;
-import java.util.Set;
+public class BuildLogHelper {
+	private static Logger logger = SDKBasedLoggerProvider.getLogger(BuildLogHelper.class);
 
-/**
- * Implementation for discovery/provisioning of an internal phases/steps of the specific Job in context of MatrixProject Plugin
- */
-class MatrixProjectProcessor extends AbstractProjectProcessor<MatrixProject> {
-
-	MatrixProjectProcessor(Job project) {
-		super((MatrixProject) project);
+	private BuildLogHelper(){
+		//for code climate
 	}
 
-	@Override
-	protected void buildStructureInternal(Set<Job> processedJobs) {
-		//  Internal phases
-		//
-		super.processBuilders(this.job.getBuilders(), this.job, processedJobs);
+	public static void enqueueBuildLog(Run run) {
+		if(!OctaneSDK.hasClients()){
+			return;
+		}
+		try {
+			String jobCiId = BuildHandlerUtils.getJobCiId(run);
+			String buildCiId = BuildHandlerUtils.getBuildCiId(run);
+			String parents = BuildHandlerUtils.getRootJobCiIds(run);
 
-		//  Post build phases
-		//
-		super.processPublishers(this.job, processedJobs);
-	}
-
-	@Override
-	public List<Builder> tryGetBuilders() {
-		return job.getBuilders();
+			logger.info("enqueued build '" + jobCiId + " #" + buildCiId + "' for log submission");
+			OctaneSDK.getClients().forEach(octaneClient -> {
+				octaneClient.getLogsService().enqueuePushBuildLog(jobCiId, buildCiId, parents);
+			});
+		} catch (Exception t) {
+			logger.error("failed to enqueue " + run + " for logs push to Octane", t);
+		}
 	}
 }
