@@ -18,39 +18,27 @@
  * ___________________________________________________________________
  */
 
-package com.microfocus.application.automation.tools.octane;
+package com.microfocus.application.automation.tools.octane.exceptions;
 
-import com.hp.octane.integrations.dto.DTOFactory;
-import com.microfocus.application.automation.tools.model.OctaneServerSettingsModel;
-import com.microfocus.application.automation.tools.octane.configuration.ConfigurationService;
-import hudson.util.Secret;
-import org.junit.BeforeClass;
-import org.junit.ClassRule;
-import org.jvnet.hudson.test.JenkinsRule;
+import java.util.List;
 
-import java.util.UUID;
+/**
+ * Define exception type that receive list of error messages
+ */
+public class AggregatedMessagesException extends RuntimeException {
+    private List<String> messages;
 
-public abstract class OctanePluginTestBase {
-	protected static final DTOFactory dtoFactory = DTOFactory.getInstance();
-	protected static String instanceId;
-	protected static String ssp;
+    public AggregatedMessagesException(List<String> messages) {
+        this.messages = messages;
+    }
 
-	@ClassRule
-	public static final JenkinsRule rule = new JenkinsRule();
-	public static final JenkinsRule.WebClient client = rule.createWebClient();
+    @Override
+    public String getMessage() {
+        return String.join(";", getMessages());
+    }
 
-	@BeforeClass
-	public static void init() {
 
-		instanceId = UUID.randomUUID().toString();
-		ssp = UUID.randomUUID().toString();
-
-		OctaneServerSettingsModel model = new OctaneServerSettingsModel(
-				"http://localhost:8008/ui/?p=" + ssp,
-				"username",
-				Secret.fromString("password"),
-				"");
-		model.setIdentity(instanceId);
-		ConfigurationService.configurePlugin(model);
-	}
+    public List<String> getMessages() {
+        return messages;
+    }
 }
