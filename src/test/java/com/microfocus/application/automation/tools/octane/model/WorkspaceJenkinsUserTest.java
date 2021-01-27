@@ -7,24 +7,34 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
 package com.microfocus.application.automation.tools.octane.model;
 
 import com.microfocus.application.automation.tools.model.OctaneServerSettingsModel;
+import com.microfocus.application.automation.tools.octane.configuration.ConfigurationValidator;
 import com.microfocus.application.automation.tools.octane.exceptions.AggregatedMessagesException;
 import org.junit.Assert;
 import org.junit.Test;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
@@ -46,7 +56,7 @@ public class WorkspaceJenkinsUserTest {
 
         //iteration 1 - ignore errors
         Map<Long, String> output = OctaneServerSettingsModel.parseWorkspace2ImpersonatedUserConf(payload, true);
-        Assert.assertEquals(2, output.size());
+        Assert.assertEquals(3, output.size());
         Assert.assertTrue(output.containsKey(1001L));
         Assert.assertEquals("user1", output.get(1001L));
 
@@ -60,8 +70,8 @@ public class WorkspaceJenkinsUserTest {
         } catch (Exception e) {
             if (e instanceof AggregatedMessagesException) {
                 List<String> messages = ((AggregatedMessagesException) e).getMessages();
-                Assert.assertEquals(5, messages.size());
-                Assert.assertTrue(messages.contains("Workspace configuration is not valid, valid format is 'Workspace ID:jenkins user': 1003:user1003:user1004"));
+                Assert.assertEquals(4, messages.size());
+                //Assert.assertTrue(messages.contains("Workspace configuration is not valid, valid format is 'Workspace ID:jenkins user': 1003:user1003:user1004"));
                 Assert.assertTrue(messages.contains("Workspace configuration is not valid, workspace ID must be numeric: user1004:1004"));
                 Assert.assertTrue(messages.contains("Workspace configuration is not valid, workspace ID must be numeric: abc:abc"));
                 Assert.assertTrue(messages.contains("Workspace configuration is not valid, user value is empty: 1005:"));
@@ -70,8 +80,5 @@ public class WorkspaceJenkinsUserTest {
                 Assert.fail("Wrong type of exception : " + e.getClass().getName());
             }
         }
-
     }
-
-
 }

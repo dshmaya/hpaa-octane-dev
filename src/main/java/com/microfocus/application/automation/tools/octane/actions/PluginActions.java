@@ -7,19 +7,28 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
 package com.microfocus.application.automation.tools.octane.actions;
 
+import com.hp.octane.integrations.OctaneClient;
 import com.hp.octane.integrations.OctaneSDK;
 import com.hp.octane.integrations.dto.general.CIServerInfo;
 import com.microfocus.application.automation.tools.octane.CIJenkinsServicesImpl;
@@ -34,6 +43,7 @@ import org.kohsuke.stapler.StaplerResponse;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.Map;
 
 /**
@@ -46,7 +56,17 @@ import java.util.Map;
 
 @Extension
 public class PluginActions implements RootAction {
-    private final String STATUS_REQUEST = "/nga/api/v1/status";
+
+    private static final String CONTENT_TYPE = "Content-Type";
+    private static final String API = "/nga/api/v1";
+    private static final String STATUS_REQUEST = API + "/status";
+    private static final String REENQUEUE_EVENT_REQUEST = API + "/reenqueue";
+    private static final String CLEAR_JOB_LIST_CACHE = API + "/clear-job-list-cache";
+    private static final String CLEAR_OCTANE_ROOTS_CACHE = API + "/clear-octane-roots-cache";
+    private static final String OCTANE_ROOTS_CACHE = API + "/octane-roots-cache";
+
+    private static final String INSTANCE_ID_PARAM = "instanceId";
+
     private final SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS");
 
     public String getIconFileName() {
@@ -64,16 +84,27 @@ public class PluginActions implements RootAction {
 
     public void doDynamic(StaplerRequest req, StaplerResponse res) throws IOException {
 
+        res.setHeader(CONTENT_TYPE, ContentType.TEXT_PLAIN.getMimeType());
+        res.setStatus(200);
         if (req.getRequestURI().toLowerCase().contains(STATUS_REQUEST)) {
             JSONObject result = getStatusResult(req.getParameterMap());
-            res.setHeader("Content-Type", ContentType.APPLICATION_JSON.getMimeType());
-            res.setStatus(200);
+            res.setHeader(CONTENT_TYPE, ContentType.APPLICATION_JSON.getMimeType());
             res.getWriter().write(result.toString());
-            return;
+        } else if (req.getRequestURI().toLowerCase().contains(REENQUEUE_EVENT_REQUEST)) {
+            reEnqueueEvent(req.getParameterMap());
+            res.getWriter().write("resent");
+        } else if (req.getRequestURI().toLowerCase().contains(CLEAR_JOB_LIST_CACHE)) {
+            resetJobListCache();
+            res.getWriter().write("done");
+        } else if (req.getRequestURI().toLowerCase().contains(CLEAR_OCTANE_ROOTS_CACHE)) {
+            resetOctaneRootsCache();
+            res.getWriter().write("done");
+        } else if (req.getRequestURI().toLowerCase().contains(OCTANE_ROOTS_CACHE)) {
+            JSONObject result = readOctaneRootsCache();
+            res.getWriter().write(result.toString());
         } else {
             res.setStatus(404);
             res.getWriter().write("");
-            return;
         }
     }
 
@@ -108,8 +139,13 @@ public class PluginActions implements RootAction {
                         addMetrics(client.getVulnerabilitiesService().getMetrics(), "vulnerabilitiesService", confJson);
                         addMetrics(client.getSonarService().getMetrics(), "sonarService", confJson);
                         addMetrics(client.getCoverageService().getMetrics(), "coverageService", confJson);
+                        addMetrics(client.getSCMDataService().getMetrics(), "scmDataService", confJson);
+                        addMetrics(client.getTasksProcessor().getMetrics(), "tasksProcessor", confJson);
+                        addMetrics(client.getConfigurationService().getMetrics(), "configurationService", confJson);
+                        addMetrics(client.getRestService().obtainOctaneRestClient().getMetrics(), "restClient", confJson);
 
-                        allMetricsJson.put(client.getConfigurationService().getCurrentConfiguration().geLocationForLog(), confJson);
+
+                        allMetricsJson.put(client.getConfigurationService().getConfiguration().geLocationForLog(), confJson);
                     }
             );
             result.put("metrics", allMetricsJson);
@@ -125,5 +161,60 @@ public class PluginActions implements RootAction {
             metricsJson.put(e.getKey(), value);
         });
         confJson.put(metricsGroup, metricsJson);
+    }
+
+    private void resetJobListCache() {
+        OctaneSDK.getClients().stream().forEach(oc -> {
+            oc.getTasksProcessor().resetJobListCache();
+        });
+    }
+
+    private void resetOctaneRootsCache() {
+        OctaneSDK.getClients().stream().forEach(oc -> {
+            oc.getConfigurationService().resetOctaneRootsCache();
+        });
+    }
+
+    private JSONObject readOctaneRootsCache() {
+        JSONObject result = new JSONObject();
+        OctaneSDK.getClients().forEach(
+                client -> {
+                    com.hp.octane.integrations.services.configuration.ConfigurationService cs = client.getConfigurationService();
+                    result.put(cs.getConfiguration().geLocationForLog(), cs.getOctaneRootsCacheCollection());
+                }
+        );
+
+        return result;
+    }
+
+    private void reEnqueueEvent(Map<String, String[]> parameterMap) {
+        if (!parameterMap.containsKey(INSTANCE_ID_PARAM)) {
+            throw new IllegalArgumentException("instanceId parameter is missing");
+        }
+        if (!parameterMap.containsKey("eventType")) {
+            throw new IllegalArgumentException("eventType parameter is missing");
+        }
+        if (!parameterMap.containsKey("jobId")) {
+            throw new IllegalArgumentException("jobId parameter is missing");
+        }
+        if (!parameterMap.containsKey("buildId")) {
+            throw new IllegalArgumentException("buildId parameter is missing");
+        }
+
+        String instanceId = parameterMap.get(INSTANCE_ID_PARAM)[0];
+        String eventType = parameterMap.get("eventType")[0];
+        String jobId = parameterMap.get("jobId")[0];
+        String buildId = parameterMap.get("buildId")[0];
+        String rootId = null;
+        if (parameterMap.containsKey("rootId")) {
+            rootId = parameterMap.get("rootId")[0];
+        }
+
+        OctaneClient octaneClient = OctaneSDK.getClientByInstanceId(instanceId);
+        if ("tests".equals(eventType.toLowerCase())) {
+            octaneClient.getTestsService().enqueuePushTestsResult(jobId, buildId, rootId);
+        } else if ("commits".equals(eventType.toLowerCase())) {
+            octaneClient.getSCMDataService().enqueueSCMData(jobId, buildId, null, null);
+        }
     }
 }

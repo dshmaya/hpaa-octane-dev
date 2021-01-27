@@ -7,17 +7,24 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
-
 
 /*
 * Create the PCModel and the PCClient and allows the connection between the job and PC
@@ -38,12 +45,14 @@ import com.microfocus.application.automation.tools.sse.result.model.junit.Testsu
 import hudson.*;
 import hudson.console.HyperlinkNote;
 import hudson.model.*;
+import hudson.model.Queue;
 import hudson.model.queue.Tasks;
 import hudson.security.ACL;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
+import hudson.util.LogTaskListener;
 import jenkins.model.Jenkins;
 import jenkins.tasks.SimpleBuildStep;
 import org.apache.commons.lang.StringUtils;
@@ -61,10 +70,11 @@ import java.io.*;
 import java.lang.reflect.Method;
 import java.text.Format;
 import java.text.SimpleDateFormat;
-import java.util.ArrayList;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+
+import hudson.model.Run;
 
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernameListBoxModel;
@@ -192,7 +202,7 @@ public class PcBuilder extends Builder implements SimpleBuildStep{
         else
             WorkspacePath =  null;
         if((getPcModel() != null) && (build != null) && (build instanceof AbstractBuild))
-            setPcModelBuildParameters(build);
+            setPcModelBuildParameters(build, listener);
         if(build.getWorkspace() != null)
             perform(build, build.getWorkspace(), launcher, listener);
         else
@@ -200,10 +210,22 @@ public class PcBuilder extends Builder implements SimpleBuildStep{
         return true;
     }
 
-    private void setPcModelBuildParameters(AbstractBuild<?, ?> build) {
-            String buildParameters = build.getBuildVariables().toString();
+    private void setPcModelBuildParameters(AbstractBuild<?, ?> build, BuildListener listener) throws IOException, InterruptedException {
+            Map<String, String> mapParamsAndEnvars = new HashMap<String, String>();
+            Map<String, String> buildParameters = build.getBuildVariables();
+            mapParamsAndEnvars.putAll(buildParameters);
+            if(listener != null) {
+                Map<String, String> buildEnvars = build.getEnvironment(listener);
+                mapParamsAndEnvars.putAll(buildEnvars);
+            }
+            else
+            {
+                Map<String, String> buildEnvars = build.getEnvironment(new LogTaskListener(null, Level.INFO));
+                mapParamsAndEnvars.putAll(buildEnvars);
+            }
+            String buildParametersAndEnvars =  mapParamsAndEnvars.toString();
             if (!buildParameters.isEmpty())
-                getPcModel().setBuildParameters(buildParameters);
+                getPcModel().setBuildParameters(buildParametersAndEnvars);
     }
 
     public File getWorkspacePath(){
@@ -374,7 +396,7 @@ public class PcBuilder extends Builder implements SimpleBuildStep{
                         Messages.PluginVersionIs(),
                         version));
             if((getPcModel() !=null) && (build != null) && (build instanceof AbstractBuild))
-                setPcModelBuildParameters((AbstractBuild) build);
+                setPcModelBuildParameters((AbstractBuild) build, null);
             if (!StringUtils.isBlank(getPcModel().getDescription()))
                 logger.println(String.format("%s - %s: %s",
                         dateFormatter.getDate(),
@@ -408,7 +430,7 @@ public class PcBuilder extends Builder implements SimpleBuildStep{
             throws InterruptedException, ClientProtocolException,
             IOException, PcException {
         if((getPcModel() !=null) && (build != null) && (build instanceof AbstractBuild))
-            setPcModelBuildParameters((AbstractBuild) build);
+            setPcModelBuildParameters((AbstractBuild) build, null);
         PcRunResponse response = null;
         String errorMessage = "";
         String eventLogString = "";

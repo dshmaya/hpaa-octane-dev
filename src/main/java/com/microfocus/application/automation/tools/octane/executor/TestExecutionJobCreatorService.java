@@ -7,35 +7,45 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
 package com.microfocus.application.automation.tools.octane.executor;
 
 import antlr.ANTLRException;
-import com.hp.octane.integrations.dto.DTOFactory;
+import com.cloudbees.hudson.plugins.folder.Folder;
+import com.hp.octane.integrations.OctaneClient;
+import com.hp.octane.integrations.OctaneSDK;
 import com.hp.octane.integrations.dto.executor.DiscoveryInfo;
-import com.hp.octane.integrations.dto.executor.impl.TestingToolType;
 import com.hp.octane.integrations.dto.scm.SCMRepository;
 import com.hp.octane.integrations.executor.TestsToRunFramework;
+import com.hp.octane.integrations.services.configurationparameters.UftTestRunnerFolderParameter;
 import com.microfocus.application.automation.tools.model.ResultsPublisherModel;
 import com.microfocus.application.automation.tools.octane.actions.UFTTestDetectionPublisher;
 import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.executor.scmmanager.ScmPluginFactory;
 import com.microfocus.application.automation.tools.octane.executor.scmmanager.ScmPluginHandler;
+import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
 import com.microfocus.application.automation.tools.octane.testrunner.TestsToRunConverterBuilder;
 import com.microfocus.application.automation.tools.results.RunResultRecorder;
 import com.microfocus.application.automation.tools.run.RunFromFileBuilder;
 import hudson.model.*;
-import hudson.scm.SCM;
 import hudson.tasks.BuildWrapper;
 import hudson.tasks.Builder;
 import hudson.triggers.SCMTrigger;
@@ -84,7 +94,7 @@ public class TestExecutionJobCreatorService {
           "forceFullDiscovery": true
         }
          */
-		FreeStyleProject proj = getDiscoveryJob(discoveryInfo);
+		FreeStyleProject proj = createDiscoveryJob(discoveryInfo);
 
 		//start job
 		if (proj != null) {
@@ -105,17 +115,49 @@ public class TestExecutionJobCreatorService {
 		}
 	}
 
-	private static FreeStyleProject getDiscoveryJob(DiscoveryInfo discoveryInfo) {
-		try {
-			String discoveryJobName = String.format("%s-%s-%s", UftConstants.DISCOVERY_JOB_MIDDLE_NAME_WITH_TEST_RUNNERS, discoveryInfo.getExecutorId(), discoveryInfo.getExecutorLogicalName());
-			//validate creation of job
-			FreeStyleProject proj = (FreeStyleProject) Jenkins.getInstanceOrNull().getItem(discoveryJobName);
-			if (proj == null) {
+	private static Folder getParentFolder(String configurationId) {
+		OctaneClient octaneClient = OctaneSDK.getClientByInstanceId(configurationId);
+		UftTestRunnerFolderParameter uftFolderParameter = (UftTestRunnerFolderParameter) octaneClient.getConfigurationService()
+				.getConfiguration().getParameter(UftTestRunnerFolderParameter.KEY);
 
-				proj = Jenkins.getInstanceOrNull().createProject(FreeStyleProject.class, discoveryJobName);
-				proj.setDescription(String.format("This job was created by the Micro Focus Application Automation Tools plugin for discovery of %s tests. It is associated with ALM Octane test runner #%s.",
-						discoveryInfo.getTestingToolType().toString(), discoveryInfo.getExecutorId()));
+		if (uftFolderParameter != null) {
+			Item item = Jenkins.getInstanceOrNull().getItem(uftFolderParameter.getFolder());
+			String errorMsg = null;
+			if (item == null) {
+				errorMsg = UftTestRunnerFolderParameter.KEY + " parameter is defined with '" + uftFolderParameter.getFolder() + "', the folder is not found. Validate that folder exist and jenkins user has READ permission on the folder.";
 			}
+			if (item != null && !JobProcessorFactory.isFolder(item)) {
+				errorMsg = UftTestRunnerFolderParameter.KEY + " parameter is defined with '" + uftFolderParameter.getFolder() + "', the item is " + item.getClass().getName() + " , but expected to be a folder.";
+			}
+			if (errorMsg != null) {
+				logger.error(errorMsg);
+				throw new IllegalArgumentException(errorMsg);
+			} else {
+				return (Folder) item;
+			}
+		} else {
+			return null;
+		}
+	}
+
+	private static FreeStyleProject createProject(String configurationId, String name) throws IOException {
+		Folder folder = getParentFolder(configurationId);
+		FreeStyleProject proj;
+		if (folder == null) {
+			proj = Jenkins.getInstanceOrNull().createProject(FreeStyleProject.class, name);
+		} else {
+			proj = folder.createProject(FreeStyleProject.class, name);
+		}
+		return proj;
+	}
+
+	private static FreeStyleProject createDiscoveryJob(DiscoveryInfo discoveryInfo) {
+		try {
+			String discoveryJobName = String.format("%s-%s-%s", UftConstants.DISCOVERY_JOB_MIDDLE_NAME_WITH_TEST_RUNNERS_NEW, discoveryInfo.getExecutorId(), discoveryInfo.getExecutorLogicalName().substring(0,5));
+			FreeStyleProject proj = createProject(discoveryInfo.getConfigurationId(), discoveryJobName);
+
+			proj.setDescription(String.format("This job was created by the Micro Focus Application Automation Tools plugin for discovery of %s tests. It is associated with ALM Octane test runner #%s.",
+					discoveryInfo.getTestingToolType().toString(), discoveryInfo.getExecutorId()));
 
 			setScmRepository(discoveryInfo.getScmRepository(), discoveryInfo.getScmRepositoryCredentialsId(), proj, false);
 			addConstantParameter(proj, UftConstants.TEST_RUNNER_ID_PARAMETER_NAME, discoveryInfo.getExecutorId(), "ALM Octane test runner ID");
@@ -277,16 +319,11 @@ public class TestExecutionJobCreatorService {
 
 	public static FreeStyleProject createExecutor(DiscoveryInfo discoveryInfo) {
 		try {
-			String projectName = String.format("%s-%s-%s", UftConstants.EXECUTION_JOB_MIDDLE_NAME_WITH_TEST_RUNNERS, discoveryInfo.getExecutorId(), discoveryInfo.getExecutorLogicalName());
+			String projectName = String.format("%s-%s-%s", UftConstants.EXECUTION_JOB_MIDDLE_NAME_WITH_TEST_RUNNERS_NEW, discoveryInfo.getExecutorId(), discoveryInfo.getExecutorLogicalName().substring(0,5));
+			FreeStyleProject proj = createProject(discoveryInfo.getConfigurationId(), projectName);
 
-
-			//validate creation of job
-			FreeStyleProject proj = (FreeStyleProject) Jenkins.getInstanceOrNull().getItem(projectName);
-			if (proj == null) {
-				proj = Jenkins.getInstanceOrNull().createProject(FreeStyleProject.class, projectName);
-				proj.setDescription(String.format("This job was created by the Micro Focus Application Automation Tools plugin for running UFT tests. It is associated with ALM Octane test runner #%s.",
-						discoveryInfo.getExecutorId()));
-			}
+			proj.setDescription(String.format("This job was created by the Micro Focus Application Automation Tools plugin for running UFT tests. It is associated with ALM Octane test runner #%s.",
+					discoveryInfo.getExecutorId()));
 
 			setScmRepository(discoveryInfo.getScmRepository(), discoveryInfo.getScmRepositoryCredentialsId(), proj, true);
 			addStringParameter(proj, UftConstants.TESTS_TO_RUN_PARAMETER_NAME, "", "Tests to run");
@@ -298,6 +335,7 @@ public class TestExecutionJobCreatorService {
 
 			addExecutionAssignedNode(proj);
 			addTimestamper(proj);
+			addConcurrentBuildFlag(proj);
 
 			//add build action
 			Builder convertedBuilder = new TestsToRunConverterBuilder(TestsToRunFramework.MF_UFT.value());
@@ -325,56 +363,7 @@ public class TestExecutionJobCreatorService {
 		}
 	}
 
-	/**
-	 * This method is called after upgrade uftExecutor to testRunner in Octane. Upgrade contains reference to non-existing executor job.
-	 * This method is intended to create missing executor job.
-	 * Creation is triggered only if missing job name starts with UftConstants.EXECUTION_JOB_MIDDLE_NAME_WITH_TEST_RUNNERS.
-	 * Scm details for new job is taken from matching discovery job. Matching is done by testRunner logical name
-	 *
-	 * @param uftExecutorJobNameWithTestRunner
-	 * @return
-	 */
-	public static FreeStyleProject createExecutorByJobName(String uftExecutorJobNameWithTestRunner) throws IOException {
-		if (StringUtils.isNotEmpty(uftExecutorJobNameWithTestRunner) && uftExecutorJobNameWithTestRunner.startsWith(UftConstants.EXECUTION_JOB_MIDDLE_NAME_WITH_TEST_RUNNERS)) {
-			DTOFactory dtoFactory = DTOFactory.getInstance();
-			String[] parts = uftExecutorJobNameWithTestRunner.split("-");
-			String testRunnerId = parts[parts.length - 2];
-			String testRunnerLogicalName = parts[parts.length - 1];
-
-			//find matching discovery job
-			List<FreeStyleProject> jobs = Jenkins.getInstanceOrNull().getAllItems(FreeStyleProject.class);
-			FreeStyleProject foundDiscoveryJob = null;
-			for (FreeStyleProject job : jobs) {
-				if (UftJobRecognizer.isDiscoveryJob(job)) {
-
-					ParametersDefinitionProperty parameters = job.getProperty(ParametersDefinitionProperty.class);
-					ParameterDefinition parameterDefinition = parameters.getParameterDefinition(UftConstants.TEST_RUNNER_LOGICAL_NAME_PARAMETER_NAME);
-					if (parameterDefinition != null && testRunnerLogicalName.equals(parameterDefinition.getDefaultParameterValue().getValue().toString())) {
-						foundDiscoveryJob = job;
-						break;
-					}
-				}
-			}
-
-			if (foundDiscoveryJob != null) {
-				//build DiscoveryInfo
-				DiscoveryInfo discoveryInfo = dtoFactory.newDTO(DiscoveryInfo.class);
-				discoveryInfo.setExecutorId(testRunnerId);
-				discoveryInfo.setExecutorLogicalName(testRunnerLogicalName);
-				discoveryInfo.setTestingToolType(TestingToolType.UFT);
-				SCM scm = foundDiscoveryJob.getScm();
-				ScmPluginHandler scmHandler = ScmPluginFactory.getScmHandlerByScmPluginName(scm.getClass().getName());
-				discoveryInfo.setScmRepositoryCredentialsId(scmHandler.getScmRepositoryCredentialsId(scm));
-				discoveryInfo.setScmRepository(dtoFactory.newDTO(SCMRepository.class)
-						.setType(scmHandler.getScmType())
-						.setUrl(scmHandler.getScmRepositoryUrl(scm)));
-
-				//createExecutor
-				return TestExecutionJobCreatorService.createExecutor(discoveryInfo);
-			} else {
-				logger.warn(uftExecutorJobNameWithTestRunner + " : job is no found. Trial to create it failed as no discovery job is found with test runner logical name " + testRunnerLogicalName);
-			}
-		}
-		return null;
+	private static void addConcurrentBuildFlag(FreeStyleProject proj) throws IOException {
+		proj.setConcurrentBuild(true);
 	}
 }

@@ -7,19 +7,29 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
 package com.microfocus.application.automation.tools.pipelineSteps;
 
+import com.hp.octane.integrations.OctaneSDK;
+import com.microfocus.application.automation.tools.octane.executor.UftConstants;
 import com.microfocus.application.automation.tools.octane.tests.HPRunnerType;
 import com.microfocus.application.automation.tools.run.RunFromFileBuilder;
 import hudson.FilePath;
@@ -76,10 +86,19 @@ public class UftScenarioLoadStepExecution extends AbstractSynchronousNonBlocking
     }
 
     private void setRunnerTypeAsParameter() {
-        ParametersAction parameterAction = build.getAction(ParametersAction.class);
-        List<ParameterValue> newParams = (parameterAction != null) ? new ArrayList<>(parameterAction.getAllParameters()) : new ArrayList<>();
-        newParams.add(new StringParameterValue(HPRunnerType.class.getSimpleName(), HPRunnerType.UFT.name()));
-        ParametersAction newParametersAction = new ParametersAction(newParams);
-        build.addOrReplaceAction(newParametersAction);
+        if (OctaneSDK.hasClients()) {
+            listener.getLogger().println("Set HPRunnerType = HPRunnerType.UFT");
+            ParametersAction parameterAction = build.getAction(ParametersAction.class);
+            List<ParameterValue> newParams = (parameterAction != null) ? new ArrayList<>(parameterAction.getAllParameters()) : new ArrayList<>();
+            newParams.add(new StringParameterValue(HPRunnerType.class.getSimpleName(), HPRunnerType.UFT.name()));
+            ParametersAction newParametersAction = new ParametersAction(newParams);
+            build.addOrReplaceAction(newParametersAction);
+
+            if (parameterAction == null || parameterAction.getParameter(UftConstants.UFT_CHECKOUT_FOLDER) == null) {
+                listener.getLogger().println("NOTE : If you need to integrate test results with an ALM Octane pipeline, and tests are located outside of the job workspace, define a parameter  " + UftConstants.UFT_CHECKOUT_FOLDER +
+                        " with the path to the repository root in the file system. This enables ALM Octane to display the test name, rather than the full path to your test.");
+                listener.getLogger().println("");
+            }
+        }
     }
 }

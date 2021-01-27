@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -22,38 +30,31 @@ package com.microfocus.application.automation.tools.octane.pullrequests;
 
 import com.cloudbees.plugins.credentials.CredentialsMatcher;
 import com.cloudbees.plugins.credentials.CredentialsMatchers;
-import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardCredentials;
-import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
-import com.cloudbees.plugins.credentials.common.StandardUsernameListBoxModel;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
-import com.cloudbees.plugins.credentials.domains.URIRequirementBuilder;
+import com.hp.octane.integrations.OctaneClient;
 import com.hp.octane.integrations.OctaneSDK;
 import com.hp.octane.integrations.dto.scm.PullRequest;
-import com.hp.octane.integrations.services.pullrequests.factory.FetchParameters;
-import com.hp.octane.integrations.services.pullrequests.factory.PullRequestFetchFactory;
-import com.hp.octane.integrations.services.pullrequests.factory.PullRequestFetchHandler;
-import com.hp.octane.integrations.services.pullrequests.rest.ScmTool;
-import com.hp.octane.integrations.services.pullrequests.rest.authentication.AuthenticationStrategy;
-import com.hp.octane.integrations.services.pullrequests.rest.authentication.BasicAuthenticationStrategy;
-import com.hp.octane.integrations.services.pullrequests.rest.authentication.NoCredentialsStrategy;
-import com.hp.octane.integrations.services.pullrequests.rest.authentication.PATStrategy;
+import com.hp.octane.integrations.exceptions.OctaneValidationException;
+import com.hp.octane.integrations.services.pullrequestsandbranches.PullRequestAndBranchService;
+import com.hp.octane.integrations.services.pullrequestsandbranches.factory.FetchFactory;
+import com.hp.octane.integrations.services.pullrequestsandbranches.factory.FetchHandler;
+import com.hp.octane.integrations.services.pullrequestsandbranches.factory.PullRequestFetchParameters;
+import com.hp.octane.integrations.services.pullrequestsandbranches.rest.ScmTool;
+import com.hp.octane.integrations.services.pullrequestsandbranches.rest.authentication.AuthenticationStrategy;
+import com.microfocus.application.automation.tools.octane.GitFetchUtils;
 import com.microfocus.application.automation.tools.octane.JellyUtils;
 import hudson.EnvVars;
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.*;
-import hudson.model.queue.Tasks;
-import hudson.security.ACL;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.BuildStepMonitor;
 import hudson.tasks.Publisher;
 import hudson.tasks.Recorder;
 import hudson.util.ListBoxModel;
-import hudson.util.Secret;
 import jenkins.tasks.SimpleBuildStep;
-import org.apache.commons.lang.StringUtils;
 import org.jenkinsci.Symbol;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import org.kohsuke.stapler.AncestorInPath;
@@ -115,39 +116,60 @@ public class PullRequestPublisher extends Recorder implements SimpleBuildStep {
             throw new IllegalArgumentException("SCM Tool is not defined.");
         }
 
-        StandardCredentials credentials = getCredentialsById(credentialsId, run, taskListener.getLogger());
-        AuthenticationStrategy authenticationStrategy = getAuthenticationStrategy(credentials);
-
-        PullRequestFetchHandler fetchHandler = PullRequestFetchFactory.getHandler(ScmTool.fromValue(scmTool), authenticationStrategy);
+        String myCredentialsId = credentialsId;
+        String myConfigurationId = configurationId;
+        String myWorkspaceId = workspaceId;
+        String myScmTool = scmTool;
         try {
-            FetchParameters fp = createFetchParameters(run, taskListener, logConsumer::printLog);
-            List<PullRequest> pullRequests = fetchHandler.fetchPullRequests(fp, logConsumer::printLog);
-            PullRequestBuildAction buildAction = new PullRequestBuildAction(run, pullRequests, fp.getMinUpdateTime(),
+            EnvVars env = run.getEnvironment(taskListener);
+            myCredentialsId = env.expand(credentialsId);
+            myConfigurationId = env.expand(configurationId);
+            myWorkspaceId = env.expand(workspaceId);
+            myScmTool = env.expand(scmTool);
+        } catch (IOException | InterruptedException e) {
+            taskListener.error("Failed loading build environment " + e);
+        }
+
+        PullRequestFetchParameters fp = createFetchParameters(run, taskListener, myConfigurationId, myWorkspaceId, logConsumer::printLog);
+
+        StandardCredentials credentials = GitFetchUtils.getCredentialsById(myCredentialsId, run, taskListener.getLogger());
+        AuthenticationStrategy authenticationStrategy = GitFetchUtils.getAuthenticationStrategy(credentials);
+
+        FetchHandler fetchHandler = FetchFactory.getHandler(ScmTool.fromValue(myScmTool), authenticationStrategy);
+        try {
+            OctaneClient octaneClient = OctaneSDK.getClientByInstanceId(myConfigurationId);
+            logConsumer.printLog("ALM Octane " + octaneClient.getConfigurationService().getConfiguration().geLocationForLog());
+            octaneClient.validateOctaneIsActiveAndSupportVersion(PullRequestAndBranchService.PULL_REQUEST_COLLECTION_SUPPORTED_VERSION);
+            List<PullRequest> pullRequests = fetchHandler.fetchPullRequests(fp, GitFetchUtils::getUserIdForCommit, logConsumer::printLog);
+            PullRequestBuildAction buildAction = new PullRequestBuildAction(run, pullRequests, fp.getRepoUrl(), fp.getMinUpdateTime(),
                     fp.getSourceBranchFilter(), fp.getTargetBranchFilter());
             run.addAction(buildAction);
 
             if (!pullRequests.isEmpty()) {
-                OctaneSDK.getClientByInstanceId(configurationId).getPullRequestService().sendPullRequests(pullRequests, workspaceId, fp, logConsumer::printLog);
+                octaneClient.getPullRequestAndBranchService().sendPullRequests(pullRequests, myWorkspaceId, fp, logConsumer::printLog);
             }
+        } catch (OctaneValidationException e) {
+            logConsumer.printLog("ALM Octane pull request collector failed on validation : " + e.getMessage());
+            run.setResult(Result.FAILURE);
         } catch (Exception e) {
-            logConsumer.printLog("Failed to fetch pull requests : " + e.getMessage() );
+            logConsumer.printLog("ALM Octane pull request collector failed : " + e.getMessage());
             e.printStackTrace(taskListener.getLogger());
             run.setResult(Result.FAILURE);
         }
     }
 
-    private FetchParameters createFetchParameters(@Nonnull Run<?, ?> run,  @Nonnull TaskListener taskListener, Consumer<String> logConsumer) {
+    private PullRequestFetchParameters createFetchParameters(@Nonnull Run<?, ?> run, @Nonnull TaskListener taskListener, String myConfigurationId, String myWorkspaceId, Consumer<String> logConsumer) {
 
-        FetchParameters fp ;
+        PullRequestFetchParameters fp;
         try {
             EnvVars env = run.getEnvironment(taskListener);
-            fp = new FetchParameters()
+            fp = new PullRequestFetchParameters()
                     .setRepoUrl(env.expand(repositoryUrl))
                     .setSourceBranchFilter(env.expand(sourceBranchFilter))
                     .setTargetBranchFilter(env.expand(targetBranchFilter));
         } catch (IOException | InterruptedException e) {
             taskListener.error("Failed loading build environment " + e);
-            fp = new FetchParameters()
+            fp = new PullRequestFetchParameters()
                     .setRepoUrl(repositoryUrl)
                     .setSourceBranchFilter(sourceBranchFilter)
                     .setTargetBranchFilter(targetBranchFilter);
@@ -160,8 +182,8 @@ public class PullRequestPublisher extends Recorder implements SimpleBuildStep {
             fp.setMaxCommitsToFetch(getIntegerValueParameter(parameterAction, "pullrequests_max_commits_to_collect"));
             fp.setMinUpdateTime(getLongValueParameter(parameterAction, "pullrequests_min_update_time"));
         }
-        if (fp.getMinUpdateTime() == FetchParameters.DEFAULT_MIN_UPDATE_DATE) {
-            long lastUpdateTime = OctaneSDK.getClientByInstanceId(configurationId).getPullRequestService().getLastUpdateTime(workspaceId, repositoryUrl);
+        if (fp.getMinUpdateTime() == PullRequestFetchParameters.DEFAULT_MIN_UPDATE_DATE) {
+            long lastUpdateTime = OctaneSDK.getClientByInstanceId(myConfigurationId).getPullRequestAndBranchService().getPullRequestLastUpdateTime(myWorkspaceId, fp.getRepoUrl());
             fp.setMinUpdateTime(lastUpdateTime);
         }
 
@@ -219,23 +241,6 @@ public class PullRequestPublisher extends Recorder implements SimpleBuildStep {
         }
     }
 
-    private AuthenticationStrategy getAuthenticationStrategy(StandardCredentials credentials) {
-        AuthenticationStrategy authenticationStrategy;
-        if (credentials == null){
-            authenticationStrategy = new NoCredentialsStrategy();
-        } else if (credentials instanceof StringCredentials) {
-            Secret secret = ((StringCredentials) credentials).getSecret();
-            authenticationStrategy = new PATStrategy(secret.getPlainText());
-        } else if (credentials instanceof StandardUsernamePasswordCredentials) {
-            StandardUsernamePasswordCredentials cr = (StandardUsernamePasswordCredentials) credentials;
-            authenticationStrategy = new BasicAuthenticationStrategy(cr.getUsername(), cr.getPassword().getPlainText());
-        } else {
-            throw new IllegalArgumentException("Credentials type is not supported : " + credentials.getClass().getCanonicalName());
-        }
-
-        return authenticationStrategy;
-    }
-
     @Override
     public DescriptorImpl getDescriptor() {
         return (DescriptorImpl) super.getDescriptor();
@@ -266,25 +271,6 @@ public class PullRequestPublisher extends Recorder implements SimpleBuildStep {
         return scmTool;
     }
 
-    /**
-     * Get user name password credentials by id.
-     */
-    private StandardCredentials getCredentialsById(String credentialsId, Run<?, ?> run, PrintStream logger) {
-
-        StandardCredentials credentials = null;
-        if (!StringUtils.isEmpty(credentialsId)) {
-            credentials = CredentialsProvider.findCredentialById(credentialsId,
-                    StandardCredentials.class,
-                    run,
-                    URIRequirementBuilder.create().build());
-            if (credentials == null) {
-                logger.println("Can not find credentials with the credentialsId:" + credentialsId);
-            }
-        }
-
-        return credentials;
-    }
-
     @Symbol("collectPullRequestsToAlmOctane")
     @Extension // This indicates to Jenkins that this is an implementation of an extension point.
     public static final class DescriptorImpl extends BuildStepDescriptor<Publisher> {
@@ -295,20 +281,7 @@ public class PullRequestPublisher extends Recorder implements SimpleBuildStep {
 
         public ListBoxModel doFillCredentialsIdItems(@AncestorInPath Item project,
                                                      @QueryParameter String credentialsId) {
-
-            if (project == null || !project.hasPermission(Item.CONFIGURE)) {
-                return new StandardUsernameListBoxModel().includeCurrentValue(credentialsId);
-            }
-
-            return new StandardListBoxModel()
-                    .includeEmptyValue()
-                    .includeMatchingAs(
-                            project instanceof Queue.Task ? Tasks.getAuthenticationOf((Queue.Task) project) : ACL.SYSTEM,
-                            project,
-                            StandardCredentials.class,
-                            URIRequirementBuilder.create().build(),
-                            CREDENTIALS_MATCHER)
-                    .includeCurrentValue(credentialsId);
+            return JellyUtils.fillCredentialsIdItems(project, credentialsId, CREDENTIALS_MATCHER);
         }
 
         public ListBoxModel doFillScmToolItems() {
@@ -321,7 +294,7 @@ public class PullRequestPublisher extends Recorder implements SimpleBuildStep {
         }
 
         public boolean isApplicable(Class<? extends AbstractProject> aClass) {
-            return aClass.equals(FreeStyleProject.class);
+            return true;
         }
 
         public ListBoxModel doFillConfigurationIdItems() {

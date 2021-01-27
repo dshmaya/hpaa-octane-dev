@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -25,7 +33,7 @@ import com.microfocus.application.automation.tools.EncryptionUtils;
 import com.microfocus.application.automation.tools.Messages;
 import com.microfocus.application.automation.tools.mc.JobConfigurationProxy;
 import com.microfocus.application.automation.tools.model.*;
-import com.microfocus.application.automation.tools.settings.MCServerSettingsBuilder;
+import com.microfocus.application.automation.tools.settings.MCServerSettingsGlobalConfiguration;
 import com.microfocus.application.automation.tools.lr.model.SummaryDataLogModel;
 import com.microfocus.application.automation.tools.lr.model.ScriptRTSSetModel;
 import com.microfocus.application.automation.tools.uft.model.UftSettingsModel;
@@ -170,7 +178,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
      */
     private static void replaceTestWithMtbxFile(FilePath workspace, Properties props, String content, String key,
                                                 String time, int index) throws Exception {
-        if (RunFromFileSystemModel.isMtbxContent(content)) {
+        if (UftToolUtils.isMtbxContent(content)) {
             try {
                 String prefx = index > 0 ? index + "_" : "";
                 String mtbxFilePath = prefx + createMtbxFileInWs(workspace, content, time);
@@ -618,7 +626,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
     public void perform(@Nonnull Run<?, ?> build, @Nonnull FilePath workspace, @Nonnull Launcher launcher,
                         @Nonnull TaskListener listener)
             throws IOException {
-       synchronized (this) {
+       //synchronized (this) {
 
            // get the mc server settings
            MCServerSettingsModel mcServerSettingsModel = getMCServerSettingsModel();
@@ -743,7 +751,18 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
            }
 
            if (uftSettingsModel != null) {
-               uftSettingsModel.addToProperties(mergedProperties, listener);
+               uftSettingsModel.addToProperties(mergedProperties);
+           }
+           //cleanup report folders before running the build
+           String selectedNode = env.get("NODE_NAME");
+           int index = 1;
+           while (mergedProperties.getProperty("Test" + index) != null) {
+               String testPath = mergedProperties.getProperty(("Test" + index));
+               List<String> buildTests = UftToolUtils.getBuildTests(selectedNode, testPath);
+               for(String test : buildTests) {
+                   UftToolUtils.deleteReportFoldersFromNode(selectedNode, test);
+               }
+               index++;
            }
 
            // get properties serialized into a stream
@@ -818,7 +837,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
                }
                out.println("Operation Was aborted by user.");
            }
-       }
+       //}
     }
 
 
@@ -951,8 +970,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
         @JavaScriptMethod
         public String getMcServerUrl(String serverName) {
             String serverUrl = "";
-            MCServerSettingsModel[] servers = Jenkins.get().getDescriptorByType(
-                    MCServerSettingsBuilder.MCDescriptorImpl.class).getInstallations();
+            MCServerSettingsModel[] servers = MCServerSettingsGlobalConfiguration.getInstance().getInstallations();
             for (MCServerSettingsModel mcServer : servers) {
                 if (mcServer.getMcServerName().equals(serverName)) {
                     serverUrl = mcServer.getMcServerUrl();
@@ -1020,8 +1038,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
          */
         @SuppressWarnings("squid:S2259")
         public boolean hasMCServers() {
-            return Jenkins.get().getDescriptorByType(
-                    MCServerSettingsBuilder.MCDescriptorImpl.class).hasMCServers();
+            return MCServerSettingsGlobalConfiguration.getInstance().hasMCServers();
         }
 
         /**
@@ -1032,8 +1049,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
         @SuppressWarnings("squid:S2259")
 
         public MCServerSettingsModel[] getMcServers() {
-            return Jenkins.getInstance().getDescriptorByType(
-                    MCServerSettingsBuilder.MCDescriptorImpl.class).getInstallations();
+            return MCServerSettingsGlobalConfiguration.getInstance().getInstallations();
         }
 
         /**

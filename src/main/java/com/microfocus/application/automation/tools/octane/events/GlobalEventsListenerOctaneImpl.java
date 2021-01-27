@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -31,10 +39,9 @@ import com.microfocus.application.automation.tools.octane.configuration.SDKBased
 import com.microfocus.application.automation.tools.octane.executor.UftTestDiscoveryDispatcher;
 import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
 import com.microfocus.application.automation.tools.octane.tests.build.BuildHandlerUtils;
-import com.microfocus.application.automation.tools.settings.OctaneServerSettingsBuilder;
+import com.microfocus.application.automation.tools.settings.OctaneServerSettingsGlobalConfiguration;
 import hudson.Extension;
 import hudson.model.Item;
-import hudson.model.Job;
 import hudson.model.listeners.ItemListener;
 import jenkins.model.Jenkins;
 import org.apache.logging.log4j.Logger;
@@ -61,7 +68,7 @@ public class GlobalEventsListenerOctaneImpl extends ItemListener {
 		logger.info("Plugin version " + ConfigurationService.getPluginVersion());
 		logger.info("CI SDK version " + OctaneSDK.SDK_VERSION);
 
-		OctaneServerSettingsBuilder.getOctaneSettingsManager().initOctaneClients();
+		OctaneServerSettingsGlobalConfiguration.getInstance().initOctaneClients();
 	}
 
 	@Override
@@ -97,7 +104,7 @@ public class GlobalEventsListenerOctaneImpl extends ItemListener {
 			return;
 		}
 
-		boolean skip = isFolder(item) || isMultibranchChild(item);//for MultibranchChild - there is a logic in Octane that handle child on parent event
+		boolean skip = JobProcessorFactory.isFolder(item) || JobProcessorFactory.isMultibranchChild(item);//for MultibranchChild - there is a logic in Octane that handle child on parent event
 		logger.info("onLocationChanged '" + oldFullName + "' to '" + newFullName + "'" + (skip ? ". Skipped." : ""));
 		if (skip) {
 			return;
@@ -105,9 +112,9 @@ public class GlobalEventsListenerOctaneImpl extends ItemListener {
 
 		try {
 			CIEvent event = dtoFactory.newDTO(CIEvent.class).setEventType(CIEventType.RENAMED);
-			if (isJob(item)) {
+			if (JobProcessorFactory.isJob(item)) {
 				event.setItemType(ItemType.JOB);
-			} else if (isMultibranch(item)) {
+			} else if (JobProcessorFactory.isMultibranch(item)) {
 				event.setItemType(ItemType.MULTI_BRANCH);
 			} else {
 				logger.info("Cannot handle onLocationChanged for " + item.getClass().getName());
@@ -120,26 +127,13 @@ public class GlobalEventsListenerOctaneImpl extends ItemListener {
 					.setPreviousProjectDisplayName(oldFullName);
 
 			CIJenkinsServicesImpl.publishEventToRelevantClients(event);
+			OctaneSDK.getClients().forEach(c -> {
+				if (c.getConfigurationService().removeFromOctaneRoots(event.getPreviousProject())) {
+					c.getConfigurationService().addToOctaneRootsCache(event.getProject());
+				}
+			});
 		} catch (Throwable throwable) {
 			logger.error("failed to build and/or dispatch RENAMED event for " + item, throwable);
 		}
-	}
-
-
-	private boolean isFolder(Item item) {
-		return JobProcessorFactory.FOLDER_JOB_NAME.equals(item.getClass().getName());
-	}
-
-	private boolean isMultibranch(Item item) {
-		return JobProcessorFactory.WORKFLOW_MULTI_BRANCH_JOB_NAME.equals(item.getClass().getName());
-	}
-
-	private boolean isJob(Item item) {
-		return item instanceof Job;
-	}
-
-	private boolean isMultibranchChild(Item item) {
-		return JobProcessorFactory.WORKFLOW_JOB_NAME.equals(item.getClass().getName()) &&
-				JobProcessorFactory.WORKFLOW_MULTI_BRANCH_JOB_NAME.equals(item.getParent().getClass().getName());
 	}
 }

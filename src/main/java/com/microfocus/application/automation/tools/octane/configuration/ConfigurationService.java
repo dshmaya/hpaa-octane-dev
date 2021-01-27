@@ -7,21 +7,29 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
 package com.microfocus.application.automation.tools.octane.configuration;
 
 import com.microfocus.application.automation.tools.model.OctaneServerSettingsModel;
-import com.microfocus.application.automation.tools.settings.OctaneServerSettingsBuilder;
+import com.microfocus.application.automation.tools.settings.OctaneServerSettingsGlobalConfiguration;
 import hudson.Plugin;
 import jenkins.model.Jenkins;
 
@@ -41,7 +49,7 @@ public class ConfigurationService {
 	 * @return list of all available configurations
 	 */
 	public static List<OctaneServerSettingsModel> getAllSettings() {
-		return Arrays.asList(OctaneServerSettingsBuilder.getOctaneSettingsManager().getServers());
+		return Arrays.asList(OctaneServerSettingsGlobalConfiguration.getInstance().getServers());
 	}
 
 	/**
@@ -50,7 +58,7 @@ public class ConfigurationService {
 	 * @return current configuration
 	 */
 	public static OctaneServerSettingsModel getSettings(String instanceId) {
-		return OctaneServerSettingsBuilder.getOctaneSettingsManager().getSettings(instanceId);
+		return OctaneServerSettingsGlobalConfiguration.getInstance().getSettings(instanceId);
 	}
 
 	/**
@@ -59,7 +67,7 @@ public class ConfigurationService {
 	 * @param newModel new configuration
 	 */
 	public static void configurePlugin(OctaneServerSettingsModel newModel) {
-		OctaneServerSettingsBuilder.getOctaneSettingsManager().setModel(newModel);
+		OctaneServerSettingsGlobalConfiguration.getInstance().setModel(newModel);
 	}
 
 	/**

@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -42,6 +50,8 @@ import hudson.scm.SCM;
 import hudson.tasks.Mailer;
 import hudson.util.DescribableList;
 import jenkins.MasterToSlaveFileCallable;
+import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.reflect.FieldUtils;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.BlameCommand;
 import org.eclipse.jgit.api.Git;
@@ -96,7 +106,7 @@ class GitSCMProcessor implements SCMProcessor {
 			FilePath workspace = build.getWorkspace();
 			if (workspace != null) {
 				scmData = workspace.act(new LineEnricherCallable(getCheckoutDir(build), scmData));
-				logger.info("Line enricher: process took: " + ((System.currentTimeMillis() - startTime) / 1000) + " seconds");
+				logger.debug("Line enricher: process took: " + ((System.currentTimeMillis() - startTime) / 1000) + " seconds");
 			} else {
 				logger.warn("Line enricher: workspace is null");
 			}
@@ -125,7 +135,7 @@ class GitSCMProcessor implements SCMProcessor {
 				commonOriginRevision.revision = workspace.act(new FileContentCallable(getCheckoutDir(abstractBuild)));
 
 			}
-			logger.info("most recent common revision resolved to " + commonOriginRevision.revision + " (branch: " + commonOriginRevision.branch + ")");
+			logger.debug("most recent common revision resolved to " + commonOriginRevision.revision + " (branch: " + commonOriginRevision.branch + ")");
 		} catch (Exception e) {
 			logger.error("failed to resolve most recent common revision : " + e.getClass().getName() + " - " + e.getMessage());
 			return commonOriginRevision;
@@ -222,9 +232,6 @@ class GitSCMProcessor implements SCMProcessor {
 			for (ChangeLogSet.Entry change : set) {
 				if (change instanceof GitChangeSet) {
 					GitChangeSet commit = (GitChangeSet) change;
-					User user = commit.getAuthor();
-					String userEmail = null;
-
 					List<SCMChange> tmpChanges = new ArrayList<>();
 					for (GitChangeSet.Path item : commit.getAffectedFiles()) {
 						SCMChange tmpChange = dtoFactory.newDTO(SCMChange.class)
@@ -233,26 +240,47 @@ class GitSCMProcessor implements SCMProcessor {
 						tmpChanges.add(tmpChange);
 					}
 
-					for (UserProperty property : user.getAllProperties()) {
-						if (property instanceof Mailer.UserProperty) {
-							userEmail = ((Mailer.UserProperty) property).getAddress();
-						}
-					}
-
 					SCMCommit tmpCommit = dtoFactory.newDTO(SCMCommit.class)
 							.setTime(commit.getTimestamp())
-							.setUser(user.getId())
-							.setUserEmail(userEmail)
 							.setRevId(commit.getCommitId())
 							.setParentRevId(commit.getParentCommit())
 							.setComment(commit.getComment().trim())
 							.setChanges(tmpChanges);
 
+					setUserInCommit(commit,tmpCommit);
 					commits.add(tmpCommit);
 				}
 			}
 		}
 		return commits;
+	}
+
+	private void setUserInCommit(GitChangeSet commit, SCMCommit dtoCommit) {
+		User user = commit.getAuthor();
+		String userName = user.getId();
+		String userEmail = null;
+		for (UserProperty property : user.getAllProperties()) {
+			if (property instanceof Mailer.UserProperty) {
+				userEmail = ((Mailer.UserProperty) property).getAddress();
+			}
+		}
+
+		try {
+			//commits in github UI - returns with user "noreply"
+			if ("noreply".equals(userName)) {
+				String authorEmail = (String) FieldUtils.readField(commit, "authorEmail", true);
+				if (StringUtils.isNotEmpty(authorEmail) && authorEmail.contains("@")) {
+					userEmail = authorEmail;
+					userName = authorEmail.substring(0, authorEmail.indexOf('@'));
+				}
+			}
+		} catch (Exception e) {
+			logger.info("Failed to extract authorEmail : " + e.getMessage());
+		}
+
+		dtoCommit
+				.setUser(userName)
+				.setUserEmail(userEmail);
 	}
 
 	private static final class FileContentCallable extends MasterToSlaveFileCallable<String> {

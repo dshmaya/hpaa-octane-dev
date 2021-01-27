@@ -1,23 +1,29 @@
 ﻿/*
- *
- *  Certain versions of software and/or documents (“Material”) accessible here may contain branding from
- *  Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
- *  the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
- *  and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
- *  marks are the property of their respective owners.
+ * Certain versions of software and/or documents ("Material") accessible here may contain branding from
+ * Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
+ * the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
+ * and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
+ * marks are the property of their respective owners.
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2019 Micro Focus or one of its affiliates..
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors (“Micro Focus”) are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
- *
  */
 
 using System.IO;
@@ -75,47 +81,26 @@ namespace HpToolsLauncher
                 }
                 else
                 {
-                    //Console.WriteLine("CreateXmlFromRunResults, UFT test");
                     testcase ufttc = CreateXmlFromUFTRunResults(testRes);
                     uftts.AddTestCase(ufttc);
                 }
             }
             if (uftts.testcase.Length > 0)
             {
-                //Console.WriteLine("CreateXmlFromRunResults, add test case to test suite");
                 _testSuites.AddTestsuite(uftts);
             }
-            else
-            {
-                //Console.WriteLine("CreateXmlFromRunResults, no uft test case to write");
-            }
+
 
             if (File.Exists(XmlName))
             {
-                //Console.WriteLine("CreateXmlFromRunResults, file exist - delete file");
                 File.Delete(XmlName);
             }
-            // else
-            //{
-                //Console.WriteLine("CreateXmlFromRunResults, file does not exist");
-           // }
+           
 
             using (Stream s = File.OpenWrite(XmlName))
             {
-               //Console.WriteLine("CreateXmlFromRunResults, write test results to xml file");
-               //Console.WriteLine("_testSuites: " + _testSuites.name + " tests: " + _testSuites.tests);
-               //Console.WriteLine("_testSuites: " + _testSuites.ToString());
                 _serializer.Serialize(s, _testSuites);
             }
-
-            //Console.WriteLine("CreateXmlFromRunResults, XmlName: " + XmlName);
-            /*if (File.Exists(XmlName))
-            {
-                Console.WriteLine("CreateXmlFromRunResults, results file was created");
-            } else
-            {
-                Console.WriteLine("CreateXmlFromRunResults, results file was not created");
-            }*/
         }
 
         private testsuite CreateXmlFromLRRunResults(TestRunResults testRes)
@@ -170,6 +155,7 @@ namespace HpToolsLauncher
 
         private testcase CreateXmlFromUFTRunResults(TestRunResults testRes)
         {
+
             testcase tc = new testcase
             {
                 systemout = testRes.ConsoleOut,

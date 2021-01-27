@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -23,13 +31,17 @@ package com.microfocus.application.automation.tools.octane.configuration;
 import com.hp.octane.integrations.OctaneSDK;
 import com.hp.octane.integrations.dto.entities.Entity;
 import com.hp.octane.integrations.exceptions.OctaneConnectivityException;
-import com.hp.octane.integrations.exceptions.OctaneSDKGeneralException;
+import com.hp.octane.integrations.services.configurationparameters.JobListCacheAllowedParameter;
+import com.hp.octane.integrations.services.configurationparameters.UftTestRunnerFolderParameter;
+import com.hp.octane.integrations.services.configurationparameters.factory.ConfigurationParameter;
+import com.hp.octane.integrations.services.configurationparameters.factory.ConfigurationParameterFactory;
 import com.hp.octane.integrations.utils.OctaneUrlParser;
 import com.microfocus.application.automation.tools.model.OctaneServerSettingsModel;
 import com.microfocus.application.automation.tools.octane.CIJenkinsServicesImpl;
 import com.microfocus.application.automation.tools.octane.ImpersonationUtil;
 import com.microfocus.application.automation.tools.octane.Messages;
 import com.microfocus.application.automation.tools.octane.exceptions.AggregatedMessagesException;
+import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
 import hudson.ProxyConfiguration;
 import hudson.model.Item;
 import hudson.model.Job;
@@ -58,7 +70,7 @@ public class ConfigurationValidator {
     public static OctaneUrlParser parseUiLocation(String uiLocation) throws FormValidation {
         try {
             return OctaneUrlParser.parse(uiLocation);
-        } catch (OctaneSDKGeneralException e) {
+        } catch (IllegalArgumentException e) {
             throw wrapWithFormValidation(false, e.getMessage());
         }
     }
@@ -139,6 +151,9 @@ public class ConfigurationValidator {
             Collection<String> jobNames = Jenkins.get().getJobNames();
             Set<String> validJobNames = jobNames.stream().filter(jobName -> CIJenkinsServicesImpl.isJobIsRelevantForPipelineModule((Job) Jenkins.get().getItemByFullName(jobName)))
                     .collect(Collectors.toSet());
+            if (validJobNames.isEmpty()) {
+                errorMessages.add(String.format("No job is available to the workspace Jenkins user '%s'", impersonatedUser));
+            }
             return validJobNames;
         } catch (Exception e) {
             errorMessages.add(String.format(Messages.JenkinsUserUnexpectedError(), impersonatedUser, e.getMessage()));
@@ -199,9 +214,7 @@ public class ConfigurationValidator {
             Set<String> userNames = workspace2ImpersonatedUser.values().stream().collect(Collectors.toSet());
             userNames.forEach(user -> {
                 Set<String> availableJobs = getAvailableJobNames(errorMessages, user);
-                if (availableJobs.isEmpty()) {
-                    errorMessages.add(String.format("No job is available to the workspace Jenkins user '%s'", user));
-                } else {
+                if (!availableJobs.isEmpty()) {
                     Set<String> unavailableJobsByGeneralImpersonatedUser = availableJobs.stream()
                             .filter(jobName -> !availableJobsForGeneralJenkinsUser.contains(jobName)).collect(Collectors.toSet());
                     if (!unavailableJobsByGeneralImpersonatedUser.isEmpty()) {
@@ -213,5 +226,61 @@ public class ConfigurationValidator {
             });
         }
         return workspace2ImpersonatedUser;
+    }
+
+    public static void checkParameters(String parameters, String impersonatedUser, Map<Long, String> workspace2ImpersonatedUser, List<String> fails) {
+        Map<String, String> params = OctaneServerSettingsModel.parseParameters(parameters);
+        params.entrySet().forEach(entry -> {
+            try {
+                ConfigurationParameter parameter = ConfigurationParameterFactory.tryCreate(entry.getKey(), entry.getValue());
+
+                if (parameter.getKey().equals(UftTestRunnerFolderParameter.KEY)) {
+                    checkUftFolderParameterWithImpersonation((UftTestRunnerFolderParameter) parameter, impersonatedUser, fails);
+                }
+                if (parameter.getKey().equals(JobListCacheAllowedParameter.KEY) && ((JobListCacheAllowedParameter) parameter).isAllowed() &&
+                        !workspace2ImpersonatedUser.isEmpty()) {
+                    fails.add(JobListCacheAllowedParameter.KEY + " - is not compatible with defining 'Jenkins user for specific workspaces'");
+                }
+            } catch (NoSuchElementException e1) {
+                String failMessage = e1.getMessage() + ". Validate that you use correct format : <param_name> : <param value>";
+                fails.add(failMessage);
+            } catch (Exception ex) {
+                fails.add(ex.getMessage());
+            }
+        });
+    }
+
+    private static void checkUftFolderParameterWithImpersonation(UftTestRunnerFolderParameter param, String impersonatedUser, List<String> fails) {
+        User jenkinsUser = null;
+        if (!StringUtils.isEmpty(impersonatedUser)) {
+            jenkinsUser = User.get(impersonatedUser, false, Collections.emptyMap());
+            if (jenkinsUser == null) {
+                //user exception will be thrown earlier
+                return;
+            }
+        }
+
+        ACLContext acl = ImpersonationUtil.startImpersonation(jenkinsUser);
+        try {
+            checkUftFolderParameter(param, fails);
+        } catch (Exception e) {
+            fails.add(UftTestRunnerFolderParameter.KEY + " - Failed to check parameter : " + e.getMessage());
+        } finally {
+            ImpersonationUtil.stopImpersonation(acl);
+        }
+    }
+
+    public static void checkUftFolderParameter(UftTestRunnerFolderParameter param, List<String> fails) {
+        String folder = param.getFolder();
+        Item item = Jenkins.get().getItemByFullName(folder);
+        if (item == null) {
+            String msg = UftTestRunnerFolderParameter.KEY + " : folder '" + folder + "' is not found. Validate that folder exist and jenkins user has READ permission on the folder.";
+            if (folder.contains("/job/")) {
+                msg += " Replace '/job/' by '/'.";
+            }
+            fails.add(msg);
+        } else if (!JobProcessorFactory.isFolder(item)) {
+            fails.add(UftTestRunnerFolderParameter.KEY + " : '" + folder + "' is not a folder.");
+        }
     }
 }

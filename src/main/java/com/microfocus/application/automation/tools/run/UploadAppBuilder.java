@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -25,7 +33,7 @@ import com.microfocus.application.automation.tools.model.MCServerSettingsModel;
 import com.microfocus.application.automation.tools.model.ProxySettings;
 import com.microfocus.application.automation.tools.model.UploadAppModel;
 import com.microfocus.application.automation.tools.model.UploadAppPathModel;
-import com.microfocus.application.automation.tools.settings.MCServerSettingsBuilder;
+import com.microfocus.application.automation.tools.settings.MCServerSettingsGlobalConfiguration;
 import com.microfocus.application.automation.tools.sse.common.StringUtils;
 import hudson.Extension;
 import hudson.Launcher;
@@ -191,13 +199,11 @@ public class UploadAppBuilder extends Builder {
         }
 
         public boolean hasMCServers() {
-            return Hudson.getInstance().getDescriptorByType(
-                    MCServerSettingsBuilder.MCDescriptorImpl.class).hasMCServers();
+            return MCServerSettingsGlobalConfiguration.getInstance().hasMCServers();
         }
 
         public MCServerSettingsModel[] getMcServers() {
-            return Hudson.getInstance().getDescriptorByType(
-                    MCServerSettingsBuilder.MCDescriptorImpl.class).getInstallations();
+            return MCServerSettingsGlobalConfiguration.getInstance().getInstallations();
         }
     }
 }

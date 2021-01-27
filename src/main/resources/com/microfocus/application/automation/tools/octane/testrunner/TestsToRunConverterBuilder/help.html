@@ -7,14 +7,22 @@
   ~ __________________________________________________________________
   ~ MIT License
   ~
-  ~ (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+  ~ (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
   ~
-  ~ The only warranties for products and services of Micro Focus and its affiliates
-  ~ and licensors ("Micro Focus") are set forth in the express warranty statements
-  ~ accompanying such products and services. Nothing herein should be construed as
-  ~ constituting an additional warranty. Micro Focus shall not be liable for technical
-  ~ or editorial errors or omissions contained herein.
-  ~ The information contained herein is subject to change without notice.
+  ~ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+  ~ documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+  ~ the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+  ~ and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+  ~
+  ~ The above copyright notice and this permission notice shall be included in all copies or
+  ~ substantial portions of the Software.
+  ~
+  ~ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+  ~ THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  ~ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  ~ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  ~ SOFTWARE.
+  ~
   ~ ___________________________________________________________________
   -->
 
@@ -65,6 +73,10 @@
                     <td>Cucumber-JVM over Maven</td>
                     <td>mvn clean -Dcucumber.options="$testsToRunConverted" test</td>
                 </tr>
+                <tr>
+                    <td>JBehave over Maven</td>
+                    <td>mvn clean -Dfeatures="$testsToRunConverted" test</td>
+                </tr>
                 </tbody>
             </table>
             </br>
@@ -96,6 +108,10 @@
                     <td>Cucumber-JVM over Maven</td>
                     <td>mvn clean -Dcucumber.options="%testsToRunConverted%" test</td>
                 </tr>
+                <tr>
+                    <td>JBehave over Maven</td>
+                    <td>mvn clean -Dfeatures="%testsToRunConverted%" test</td>
+                </tr>
                 </tbody>
             </table>
             </br>
@@ -125,7 +141,11 @@
                 </tr>
                 <tr>
                     <td>Cucumber-JVM over Maven</td>
-                    <td>bat(/mvn clean -Dcucumber.options="${params.testsToRunConverted}" test)</td>
+                    <td>bat(/mvn clean -Dcucumber.options="${params.testsToRunConverted}" test/)</td>
+                </tr>
+                <tr>
+                    <td>JBehave over Maven</td>
+                    <td>bat(/mvn clean -Dfeatures="${testsToRunConverted}" test/)</td>
                 </tr>
                 </tbody>
             </table>
@@ -143,8 +163,14 @@
             with the correct directory.</li>
         <li> <b>JUnit/TestNG</b>: Supported for JUnit 4.7+, Surefire Plugin 2.19+, Failsafe Plugin 2.12.1+.</li>
         <li> <b>Cucumber-JVM over Maven</b>: If your project contains several run classes, specify a run class that will
-            be used, othewise all run classes will be executed by Cucumber. You can specify test runner by adding:
+            be used, otherwise all run classes will be executed by Cucumber. You can specify test runner by adding:
             '-Dtest=[runner class name]' to the Maven command
         </li>
+        <li> <b>JBehave over Maven</b>: read more about integration with JBehave   <a target="_blank" href="https://github.com/MicroFocus/octane-jbehave-gherkin-reporter/blob/main/README.md">here</a>
+        </li>
     </ul>
+
+    </br>
+    </br>
+    See more help information in  <a target="_blank" href="https://admhelp.microfocus.com/octane/en/latest/Online/Content/AdminGuide/how-setup-testing-integration.htm">ALM Octane Help Center</a>
 </div>

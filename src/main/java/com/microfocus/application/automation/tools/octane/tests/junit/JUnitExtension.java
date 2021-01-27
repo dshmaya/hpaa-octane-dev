@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -24,6 +32,7 @@ import com.google.inject.Inject;
 import com.microfocus.application.automation.tools.octane.actions.cucumber.CucumberTestResultsAction;
 import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.executor.CheckOutSubDirEnvContributor;
+import com.microfocus.application.automation.tools.octane.executor.UftConstants;
 import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
 import com.microfocus.application.automation.tools.octane.tests.HPRunnerType;
 import com.microfocus.application.automation.tools.octane.tests.OctaneTestsExtension;
@@ -38,9 +47,13 @@ import hudson.FilePath;
 import hudson.maven.MavenBuild;
 import hudson.maven.MavenModule;
 import hudson.maven.MavenModuleSetBuild;
+import hudson.model.ParameterValue;
+import hudson.model.ParametersAction;
 import hudson.model.Run;
+import hudson.model.StringParameterValue;
 import hudson.remoting.VirtualChannel;
 import hudson.tasks.test.AbstractTestResultAction;
+import org.apache.commons.lang.StringUtils;
 import org.apache.logging.log4j.Logger;
 import org.jenkinsci.remoting.Role;
 import org.jenkinsci.remoting.RoleChecker;
@@ -155,6 +168,12 @@ public class JUnitExtension extends OctaneTestsExtension {
 			this.jenkinsRootUrl = jenkinsRootUrl;
 			String buildRootDir = build.getRootDir().getCanonicalPath();
 			this.sharedCheckOutDirectory = CheckOutSubDirEnvContributor.getSharedCheckOutDirectory(build.getParent());
+			if (sharedCheckOutDirectory == null && HPRunnerType.UFT.equals(hpRunnerType)) {
+				ParametersAction parameterAction = build.getAction(ParametersAction.class);
+				ParameterValue pv = parameterAction.getParameter(UftConstants.UFT_CHECKOUT_FOLDER);
+				sharedCheckOutDirectory = pv != null && pv instanceof StringParameterValue ?
+						StringUtils.strip((String) pv.getValue(), "\\/") : "";
+			}
 
 			this.jobName = JobProcessorFactory.getFlowProcessor(build.getParent()).getTranslatedJobName();
 			this.buildId = build.getId();

@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -23,12 +31,13 @@ package com.microfocus.application.automation.tools.results;
 import com.microfocus.application.automation.tools.common.RuntimeUtils;
 import com.microfocus.application.automation.tools.model.EnumDescription;
 import com.microfocus.application.automation.tools.model.ResultsPublisherModel;
-import com.microfocus.application.automation.tools.model.RunFromFileSystemModel;
 import com.microfocus.application.automation.tools.results.projectparser.performance.*;
 import com.microfocus.application.automation.tools.run.PcBuilder;
 import com.microfocus.application.automation.tools.run.RunFromAlmBuilder;
 import com.microfocus.application.automation.tools.run.RunFromFileBuilder;
 import com.microfocus.application.automation.tools.run.SseBuilder;
+import com.microfocus.application.automation.tools.uft.utils.UftToolUtils;
+import hudson.EnvVars;
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
@@ -39,6 +48,8 @@ import hudson.model.*;
 import hudson.tasks.*;
 import hudson.tasks.junit.*;
 import hudson.tasks.test.TestResultAggregator;
+import hudson.util.RunList;
+import jenkins.model.Jenkins;
 import jenkins.tasks.SimpleBuildStep;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.filefilter.WildcardFileFilter;
@@ -60,7 +71,12 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static com.microfocus.application.automation.tools.results.projectparser.performance.XmlParserUtil.getNode;
 import static com.microfocus.application.automation.tools.results.projectparser.performance.XmlParserUtil.getNodeAttr;
@@ -96,9 +112,12 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
     private static final String NO_TRANSACTION_SUMMARY_REPORT_ERROR = "Template contains no transaction summary " +
             "report.";
     private static final String PARALLEL_RESULT_FILE = "parallelrun_results.html";
+    private static final String REPORT_ARCHIVE_SUFFIX = "_Report.zip";
+	private static final String EXTERNAL_REPORT_FOLDER = "StRes";
 
 	private final ResultsPublisherModel _resultsPublisherModel;
 	private List<FilePath> runReportList;
+
 
 	/**
 	 * Instantiates a new Run result recorder.
@@ -324,7 +343,7 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 		// folder
 		File artifactsDir = new File(build.getRootDir(), "archive");
 		artifactsDir.mkdirs();
-		listener.getLogger().println("artifactsDir: " + artifactsDir.getName() + " " + artifactsDir.getAbsolutePath());
+
 		// read each result.xml
 		/*
 		 * The structure of the result file is: <testsuites> <testsuite>
@@ -354,7 +373,7 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 			Node testSuiteNode = doc.getElementsByTagName("testsuite").item(0);
 			Element testSuiteElement = (Element) testSuiteNode;
 			if (testSuiteElement.hasAttribute("name") && testSuiteElement.getAttribute("name").endsWith(".lrs")) { // LR
-																													// test
+				// test
 				NodeList testSuiteNodes = doc.getElementsByTagName("testsuite");
 				for (int i = 0; i < testSuiteNodes.getLength(); i++) {
 					testSuiteNode = testSuiteNodes.item(i);
@@ -386,7 +405,7 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 						reportFolders.add(reportFolder);
 
 						FilePath testFolder = new FilePath(projectWS.getChannel(), testFolderPath);
-						String zipFileName = getUniqueZipFileNameInFolder(zipFileNames, testFolder.getName());
+						String zipFileName = getUniqueZipFileNameInFolder(zipFileNames, testFolder.getName(), "LR");
 						FilePath archivedFile = new FilePath(new FilePath(artifactsDir), zipFileName);
 
 						if (archiveFolder(reportFolder, testStatus, archivedFile, listener)) {
@@ -413,9 +432,7 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 				boolean reportIsHtml = false;
 				NodeList testCasesNodes = ((Element) testSuiteNode).getElementsByTagName("testcase");
 				Map<String, Integer> fileNameCount = new HashMap<>();
-
 				for (int i = 0; i < testCasesNodes.getLength(); i++) {
-
 					Node nNode = testCasesNodes.item(i);
 
 					if (nNode.getNodeType() == Node.ELEMENT_NODE) {
@@ -426,139 +443,130 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 							continue;
 						}
 
-						String reportFolderPath = eElement.getAttribute(REPORT_NAME_FIELD); // e.g.
-																							// "C:\UFTTest\GuiTest1\Report"
-
+						String reportFolderPath = eElement.getAttribute(REPORT_NAME_FIELD); // e.g. "C:\UFTTest\GuiTest1\Report"
 						String testFolderPath = eElement.getAttribute("name"); // e.g. "C:\UFTTest\GuiTest1"
 						String testStatus = eElement.getAttribute("status"); // e.g. "pass"
 						Node nodeSystemInfo = eElement.getElementsByTagName("system-out").item(0);
 						String sysInfo = nodeSystemInfo.getFirstChild().getNodeValue();
 						String testDateTime = sysInfo.substring(0, 19);
+						String reportIndex = "";
+						File testFileFullName = new File(testFolderPath);
+						String testName = org.apache.commons.io.FilenameUtils.getName(testFileFullName.getPath());
 
-						FilePath reportFolder = new FilePath(projectWS.getChannel(), reportFolderPath);
-						boolean isParallelRunnerReport = isParallelRunnerReportPath(reportFolder);
+						int nameCount = 1;
+						if (fileNameCount.containsKey(testName)) {
+							nameCount = fileNameCount.get(testName) + 1;
+						}
+						// update the count for this file
+						fileNameCount.put(testName, nameCount);
 
-						reportFolders.add(reportFolder);
-
-						String archiveTestResultMode = _resultsPublisherModel.getArchiveTestResultsMode();
-						boolean archiveTestResult = false;
-
-						// check for the new html report
-						FilePath htmlReport = new FilePath(reportFolder,
-								isParallelRunnerReport ? PARALLEL_RESULT_FILE : "run_results.html");
-
-						if (htmlReport.exists()) {
-							reportIsHtml = true;
-							String htmlReportDir = reportFolder.getRemote();
-
-							ReportMetaData reportMetaData = new ReportMetaData();
-							reportMetaData.setFolderPath(htmlReportDir);
-							reportMetaData.setIsHtmlReport(true);
-							reportMetaData.setDateTime(testDateTime);
-							reportMetaData.setStatus(testStatus);
-							reportMetaData.setIsParallelRunnerReport(isParallelRunnerReport); // we need to handle
-							// the type for this report
-							File testFileFullName = new File(testFolderPath);
-							String testName = org.apache.commons.io.FilenameUtils.getName(testFileFullName.getPath());
-
-							// we must consider the case when we run the same test in the same build
-							int nameCount = 1;
-							if (fileNameCount.containsKey(testName)) {
-								nameCount = fileNameCount.get(testName) + 1;
-							}
-
-							// update the count for this file
-							fileNameCount.put(testName, nameCount);
-							testName += "[" + nameCount + "]";
-							String resourceUrl = "artifact/UFTReport/" + testName;
-							reportMetaData.setResourceURL(resourceUrl);
-							reportMetaData.setDisPlayName(testName); // use the name, not the full path
-
-							// don't know reportMetaData's URL path yet, we will generate it later.
-							ReportInfoToCollect.add(reportMetaData);
-
-							listener.getLogger()
-									.println("add html report info to ReportInfoToCollect: " + testDateTime);
+						if (fileNameCount.get(testName) != null) {
+							reportIndex = Integer.toString(fileNameCount.get(testName));
+						} else {
+							reportIndex = "1";
 						}
 
-						archiveTestResult = isArchiveTestResult(testStatus, archiveTestResultMode);
-						if (archiveTestResult) {
+						FilePath reportFolder = new FilePath(projectWS.getChannel(), reportFolderPath + reportIndex);
 
-							if (reportFolder.exists()) {
+							if (!reportFolder.exists()) {
+								reportFolder = new FilePath(projectWS.getChannel(), reportFolderPath);
+							}
+							boolean isParallelRunnerReport = isParallelRunnerReportPath(reportFolder);
+							reportFolders.add(reportFolder);
 
-								FilePath testFolder = new FilePath(projectWS.getChannel(), testFolderPath);
+							String archiveTestResultMode = _resultsPublisherModel.getArchiveTestResultsMode();
+							boolean archiveTestResult;
 
-								String zipFileName = getUniqueZipFileNameInFolder(zipFileNames, testFolder.getName());
-								zipFileNames.add(zipFileName);
+							// check for the new html report
 
-								listener.getLogger().println("Zipping report folder: " + reportFolderPath);
-
-								ByteArrayOutputStream outstr = new ByteArrayOutputStream();
-
-								// don't use FileFilter for zip, or it will cause bug when files are on slave
-								reportFolder.zip(outstr);
-
-								/*
-								 * I did't use copyRecursiveTo or copyFrom due to bug in
-								 * jekins:https://issues.jenkins-ci.org/browse /JENKINS-9189 //(which is
-								 * cleaimed to have been fixed, but not. So I zip the folder to stream and copy
-								 * it to the master.
-								 */
-
-								ByteArrayInputStream instr = new ByteArrayInputStream(outstr.toByteArray());
-
-								FilePath archivedFile = new FilePath(new FilePath(artifactsDir), zipFileName);
-								archivedFile.copyFrom(instr);
-								listener.getLogger().println("copy from slave to master: " + archivedFile);
-								outstr.close();
-								instr.close();
-
-								// add to Report list
-								ReportMetaData reportMetaData = new ReportMetaData();
-								reportMetaData.setIsHtmlReport(false);
-								reportMetaData.setIsParallelRunnerReport(false);
-								// reportMetaData.setFolderPath(htmlReportDir); //no need for RRV
-								File testFileFullName = new File(testFolderPath);
-								String testName = testFileFullName.getName();
-								reportMetaData.setDisPlayName(testName); // use the name, not the full path
-								String zipFileUrlName = "artifact/" + zipFileName;
-								reportMetaData.setUrlName(zipFileUrlName); // for RRV, the file url and resource url are
-																			// the same.
-								reportMetaData.setResourceURL(zipFileUrlName);
+							FilePath htmlReport = new FilePath(reportFolder,
+									isParallelRunnerReport ? PARALLEL_RESULT_FILE : "run_results.html");
+							ReportMetaData reportMetaData = new ReportMetaData();
+							if (htmlReport.exists()) {
+								reportIsHtml = true;
+								String htmlReportDir = reportFolder.getRemote();
+								reportMetaData.setFolderPath(htmlReportDir);
+								reportMetaData.setIsHtmlReport(true);
 								reportMetaData.setDateTime(testDateTime);
 								reportMetaData.setStatus(testStatus);
+								reportMetaData.setIsParallelRunnerReport(isParallelRunnerReport); // we need to handle
+								// the type for this report
+								testFileFullName = new File(testFolderPath);
+								testName = org.apache.commons.io.FilenameUtils.getName(testFileFullName.getPath());
+								testName += "[" + nameCount + "]";
+								String resourceUrl = "artifact/UFTReport/" + testName;
+
+								reportMetaData.setResourceURL(resourceUrl);
+								reportMetaData.setDisPlayName(testName); // use the name, not the full path
+
+								// don't know reportMetaData's URL path yet, we will generate it later.
 								ReportInfoToCollect.add(reportMetaData);
-
-							} else {
-								listener.getLogger().println("No report folder was found in: " + reportFolderPath);
 							}
+
+							archiveTestResult = isArchiveTestResult(testStatus, archiveTestResultMode);
+							if (archiveTestResult) {
+
+								if (reportFolder.exists()) {
+
+									FilePath testFolder = new FilePath(projectWS.getChannel(), testFolderPath);
+
+									String zipFileName = getUniqueZipFileNameInFolder(zipFileNames, testFolder.getName(), "UFT");
+									zipFileNames.add(zipFileName);
+
+									ByteArrayOutputStream outstr = new ByteArrayOutputStream();
+
+									// don't use FileFilter for zip, or it will cause bug when files are on slave
+									reportFolder.zip(outstr);
+
+									/*
+									 * I did't use copyRecursiveTo or copyFrom due to bug in
+									 * jekins:https://issues.jenkins-ci.org/browse /JENKINS-9189 //(which is
+									 * cleaimed to have been fixed, but not. So I zip the folder to stream and copy
+									 * it to the master.
+									 */
+
+									ByteArrayInputStream instr = new ByteArrayInputStream(outstr.toByteArray());
+
+									FilePath archivedFile = new FilePath(new FilePath(artifactsDir), zipFileName);
+									archivedFile.copyFrom(instr);
+
+									outstr.close();
+									instr.close();
+
+									// add to Report list
+									String zipFileUrlName = "artifact/" + zipFileName;
+									reportMetaData.setArchiveUrl(zipFileUrlName);
+
+								} else {
+									listener.getLogger().println("No report folder was found in: " + reportFolderPath);
+								}
+							}
+
 						}
-
 					}
-				}
 
-				if (reportIsHtml && !ReportInfoToCollect.isEmpty()) {
-					collectAndPrepareHtmlReports(build, listener, ReportInfoToCollect, runWorkspace);
-				}
+					if (reportIsHtml && !ReportInfoToCollect.isEmpty()) {
+						collectAndPrepareHtmlReports(build, listener, ReportInfoToCollect, runWorkspace);
+					}
 
-				if (!ReportInfoToCollect.isEmpty()) {
-					// serialize report metadata
-					File reportMetaDataXmlFile = new File(artifactsDir.getParent(), REPORTMETADATE_XML);
-					String reportMetaDataXml = reportMetaDataXmlFile.getAbsolutePath();
-					writeReportMetaData2XML(ReportInfoToCollect, reportMetaDataXml, listener);
+					if (!ReportInfoToCollect.isEmpty()) {
+						// serialize report metadata
+						File reportMetaDataXmlFile = new File(artifactsDir.getParent(), REPORTMETADATE_XML);
+						String reportMetaDataXml = reportMetaDataXmlFile.getAbsolutePath();
+						writeReportMetaData2XML(ReportInfoToCollect, reportMetaDataXml, listener);
 
-					// Add UFT report action
-					try {
-						listener.getLogger().println("Adding a report action to the current build.");
-						HtmlBuildReportAction reportAction = new HtmlBuildReportAction(build);
-						build.addAction(reportAction);
+						// Add UFT report action
+						try {
+							listener.getLogger().println("Adding a report action to the current build.");
+							HtmlBuildReportAction reportAction = new HtmlBuildReportAction(build);
+							build.addAction(reportAction);
 
-					} catch (IOException | SAXException | ParserConfigurationException ex) {
-						listener.getLogger().println("a problem adding action: " + ex);
+						} catch (IOException | SAXException | ParserConfigurationException ex) {
+							listener.getLogger().println("a problem adding action: " + ex);
+						}
 					}
 				}
 			}
-		}
 	}
 
 	private void writeReportMetaData2XML(List<ReportMetaData> htmlReportsInfo, String xmlFile, TaskListener _logger) {
@@ -582,6 +590,7 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 			String status = htmlReportInfo.getStatus();
 			String isHtmlReport = htmlReportInfo.getIsHtmlReport() ? "true" : "false";
 			String isParallelRunnerReport = htmlReportInfo.getIsParallelRunnerReport() ? "true" : "false";
+			String archiveUrl = htmlReportInfo.getArchiveUrl();
 			Element elmReport = doc.createElement(REPORT_NAME_FIELD);
 			elmReport.setAttribute("disPlayName", disPlayName);
 			elmReport.setAttribute("urlName", urlName);
@@ -590,12 +599,13 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 			elmReport.setAttribute("status", status);
 			elmReport.setAttribute("isHtmlreport", isHtmlReport);
 			elmReport.setAttribute("isParallelRunnerReport", isParallelRunnerReport);
+			elmReport.setAttribute("archiveUrl", archiveUrl);
 			root.appendChild(elmReport);
 			currentReport++;
 		}
 
 		try {
-			write2XML(doc, xmlFile, _logger);
+			write2XML(doc, xmlFile);
 		} catch (TransformerException e) {
 			_logger.error("Failed transforming xml file: " + e);
 			_logger.getLogger().println("Failed transforming xml file: " + e);
@@ -605,9 +615,8 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 		}
 	}
 
-	private void write2XML(Document document, String filename, TaskListener _logger)
+	private void write2XML(Document document, String filename)
 			throws TransformerException, FileNotFoundException {
-		_logger.getLogger().println("create xml file from report meta data");
 		document.normalize();
 
 		TransformerFactory tFactory = TransformerFactory.newInstance();
@@ -638,78 +647,103 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 
 				String htmlReportDir = htmlReportInfo.getFolderPath(); // C:\UFTTest\GuiTest1\Report
 
-				listener.getLogger().println("collectAndPrepareHtmlReports, collecting:" + htmlReportDir);
-				listener.getLogger().println("workspace: " + runWorkspace);
+				try {
+					EnvVars env = build.getEnvironment(listener);
+					long indexFolder = getIndexOfReportFolder(new File(htmlReportDir), EXTERNAL_REPORT_FOLDER, env.get("NODE_NAME"));
+					if(indexFolder > 0) {
+						String innerHtmlReportDir = htmlReportDir.substring(0, htmlReportDir.lastIndexOf('\\')) + "\\" + EXTERNAL_REPORT_FOLDER + indexFolder;
 
-				// copy to the subdirs of master
-				FilePath source = new FilePath(runWorkspace, htmlReportDir);
+						archiveAndCopyReportFolder(runWorkspace, reportDir, innerHtmlReportDir);
+					}
+				} catch (Exception e){
+					listener.getLogger().println("Path to test folder not found");
+				}
+				//for example:  C:\Program Files (x86)\Jenkins\workspace\job_name
 
-				// if it's a parallel runner report path, we must change the
-				// resFileName
-				boolean isParallelRunner = isParallelRunnerReportPath(source);
-
-				listener.getLogger().println("source: " + source);
-				String testName = htmlReportInfo.getDisPlayName(); // like "GuiTest1"
-				String dest = testName;
-				String testDateTime = htmlReportInfo.getDateTime();
-				listener.getLogger().println("collectAndPrepareHtmlReports: " + testDateTime);
-				FilePath targetPath = new FilePath(rootTarget, dest); // target path is something like "C:\Program Files
-				// (x86)\Jenkins\jobs\testAction\builds\35\archive\UFTReport\GuiTest1"
-
+				// archive and copy to the subdirs of master
+				archiveAndCopyReportFolder(runWorkspace, reportDir, htmlReportDir);
 				// zip copy and unzip
-				ByteArrayOutputStream outstr = new ByteArrayOutputStream();
-
-				// don't use FileFilter for zip, or it will cause bug when files are on slave
-				source.zip(outstr);
-				ByteArrayInputStream instr = new ByteArrayInputStream(outstr.toByteArray());
-
-				String zipFileName = "UFT_Report_HTML_tmp.zip";
-				FilePath archivedFile = new FilePath(rootTarget, zipFileName);
-
-				archivedFile.copyFrom(instr);
-
-				listener.getLogger().println("copy from slave to master: " + archivedFile);
-				outstr.close();
-				instr.close();
-
-				// unzip
-				archivedFile.unzip(rootTarget);
-				archivedFile.delete();
-
 				// now,all the files are in the C:\Program Files (x86)
 				// \Jenkins\jobs\testAction\builds\35\archive\UFTReport\Report
 				// we need to rename the above path to targetPath.
 				// So at last we got files in C:\Program Files (x86)
 				// \Jenkins\jobs\testAction\builds\35\archive\UFTReport\GuiTest
-
 				String unzippedFileName = org.apache.commons.io.FilenameUtils.getName(htmlReportDir);
+
+				String testName = htmlReportInfo.getDisPlayName(); // like "GuiTest1"
+				String dest = testName;
+				FilePath targetPath = new FilePath(rootTarget, dest); // target path is something like "C:\Program Files
+				// (x86)\Jenkins\jobs\testAction\builds\35\archive\UFTReport\GuiTest1"
 				FilePath unzippedFolderPath = new FilePath(rootTarget, unzippedFileName); // C:\Program Files
 				// (x86)\Jenkins\jobs\testAction\builds\35\archive\UFTReport\Report
+				// //C:\Program Files\(x86)\Jenkins\jobs\testAction\builds\35\archive\UFTReport\Report
 
-				// //C:\Program Files
-				// (x86)\Jenkins\jobs\testAction\builds\35\archive\UFTReport\Report
+				//rename unzippedFolderPath to targetPath
 				unzippedFolderPath.renameTo(targetPath);
-				listener.getLogger()
-						.println("UnzippedFolderPath is: " + unzippedFolderPath + " targetPath is: " + targetPath);
-				// end zip copy and unzip
 
 				// fill in the urlName of this report. we need a network path not a FS path
 				String resourceUrl = htmlReportInfo.getResourceURL();
+				FilePath source = new FilePath(runWorkspace, htmlReportDir);
+
+				// if it's a parallel runner report path, we must change the resFileName
+				boolean isParallelRunner = isParallelRunnerReportPath(source);
 				String resFileName = isParallelRunner ? "/parallelrun_results.html" : "/run_results.html";
 
 				String urlName = resourceUrl + resFileName; // like artifact/UFTReport/GuiTest1/run_results.html
 				// or for Parallel runner /GuiTest1[1]/parallelrun_results.html
 
-				listener.getLogger().println("set the report urlName to " + urlName);
 				htmlReportInfo.setUrlName(urlName);
-
 			}
 		} catch (Exception ex) {
 			listener.getLogger().println("catch exception in collectAndPrepareHtmlReports: " + ex);
+			listener.getLogger().println(ex.getMessage());
+			listener.getLogger().println(ex.getCause());
+			listener.getLogger().println(ex.getStackTrace());
 		}
 
 		return true;
 	}
+
+	private void archiveAndCopyReportFolder(FilePath runWorkspace, File reportDir, String htmlReportDir) throws IOException, InterruptedException {
+		FilePath rootTarget = new FilePath(reportDir);
+
+		FilePath source  = new FilePath(runWorkspace, htmlReportDir);
+
+		ByteArrayOutputStream outStr = new ByteArrayOutputStream();
+		source.zip(outStr);
+
+		ByteArrayInputStream inStr= new ByteArrayInputStream(outStr.toByteArray());
+		String zipFileName = "UFT_Report_HTML_tmp.zip";
+		FilePath archivedFile = new FilePath(rootTarget, zipFileName);
+
+		//copy from slave to master
+		archivedFile.copyFrom(inStr);
+
+		// end zip copy and unzip
+		archivedFile.unzip(rootTarget);
+
+		//delete temporary archive UFT_Report_HTML_tmp.zip
+		archivedFile.delete();
+
+		outStr.close();
+		inStr.close();
+	}
+
+
+	public int getIndexOfReportFolder(File directory, String fileName, String nodeName) throws IOException, InterruptedException {
+		String testFolderPath = directory.getPath().substring(0, directory.getPath().lastIndexOf('\\'));
+		int index = 0;
+
+		FilePath testFilePath = UftToolUtils.getFilePath(nodeName, testFolderPath);
+		for (FilePath file : testFilePath.listDirectories()) {
+			if (file.isDirectory() && file.getName().startsWith(fileName) && index < Integer.parseInt(file.getName().substring(5))) {
+					index = Integer.parseInt(file.getName().substring(5));
+			}
+		}
+
+		return index;
+	}
+
 
 	/**
 	 * Copies the run report from the executing node to the Jenkins master for
@@ -1140,15 +1174,16 @@ public class RunResultRecorder extends Recorder implements Serializable, MatrixA
 	/*
 	 * if we have a directory with file name "file.zip" we will return "file_1.zip"
 	 */
-	private String getUniqueZipFileNameInFolder(ArrayList<String> names, String fileName)
+	private String getUniqueZipFileNameInFolder(ArrayList<String> names, String fileName, String productName)
 			throws IOException, InterruptedException {
 
-		String result = fileName + "_Report.zip";
-
-		int index = 0;
-
+		String result = fileName + REPORT_ARCHIVE_SUFFIX;
+		int index = 1;
+		if(productName.equals("UFT") && names.indexOf(result) == -1){
+			result = fileName + "_" + index + REPORT_ARCHIVE_SUFFIX;
+		}
 		while (names.indexOf(result) > -1) {
-			result = fileName + "_" + (++index) + "_Report.zip";
+			result = fileName + "_" + (++index) + REPORT_ARCHIVE_SUFFIX;
 		}
 
 		return result;

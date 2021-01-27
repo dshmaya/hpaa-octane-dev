@@ -1,23 +1,29 @@
 <!--
-  ~
-  ~  Certain versions of software and/or documents (“Material”) accessible here may contain branding from
-  ~  Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
-  ~  the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
-  ~  and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
-  ~  marks are the property of their respective owners.
+  ~ Certain versions of software and/or documents ("Material") accessible here may contain branding from
+  ~ Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
+  ~ the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
+  ~ and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
+  ~ marks are the property of their respective owners.
   ~ __________________________________________________________________
   ~ MIT License
   ~
-  ~ © Copyright 2012-2019 Micro Focus or one of its affiliates..
+  ~ (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
   ~
-  ~ The only warranties for products and services of Micro Focus and its affiliates
-  ~ and licensors (“Micro Focus”) are set forth in the express warranty statements
-  ~ accompanying such products and services. Nothing herein should be construed as
-  ~ constituting an additional warranty. Micro Focus shall not be liable for technical
-  ~ or editorial errors or omissions contained herein.
-  ~ The information contained herein is subject to change without notice.
+  ~ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+  ~ documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+  ~ the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+  ~ and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+  ~
+  ~ The above copyright notice and this permission notice shall be included in all copies or
+  ~ substantial portions of the Software.
+  ~
+  ~ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+  ~ THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  ~ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  ~ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  ~ SOFTWARE.
+  ~
   ~ ___________________________________________________________________
-  ~
   -->
 
 <?jelly escape-by-default='true'?>
@@ -43,12 +49,7 @@
             width: 85%;
         }
 
-        #clearBtn {
-            background-image: url("${rootURL}/plugin/hp-application-automation-tools-plugin/icons/uft_icons/eraser.png");
-            background-size: 18px;
-            width: 20px;
-            margin-left: 20px;
-        }
+
 
         #cleanupTestInput {
             width: 250px;
@@ -59,13 +60,7 @@
             margin-left: 20px;
         }
 
-        #copyPasteBtn {
-            background-image: url("${rootURL}/plugin/hp-application-automation-tools-plugin/icons/uft_icons/copy_paste.png");
-            background-size: 45px;
-            width: 50px;
-            height: 28px;
-            margin-left: 10px;
-        }
+
 
         td.help-text {
             padding-left: 15px;
@@ -107,58 +102,43 @@
     <tr>
       <td/>
       <td colspan="2" class="help-text">
-        <div class="help" style="display:block;">
+        <div class="help" style="display:block; margin-left: -15px;">
           ${%DontForgetThePublisher}
         </div>
       </td>
       <td/>
     </tr>
 
-    <f:entry>
-        <label>Tests</label>
-        <f:entry field="fsTests">
-            <f:expandableTextbox name="runfromfs.fsTests" value="${instance.runFromFileModel.fsTests}"/>
-        </f:entry>
-     </f:entry>
-
-    <f:entry>
-        <label>Results directory</label>
-        <f:entry field="fsReportPath">
-            <f:textbox name="runfromfs.fsReportPath" value="${instance.runFromFileModel.fsReportPath}"/>
-        </f:entry>
+    <f:entry title="Tests" field="fsTests">
+        <f:expandableTextbox name="runfromfs.fsTests" value="${instance.runFromFileModel.fsTests}"/>
     </f:entry>
 
-    <f:entry style="margin-left:35px;">
-        <cv:customOptionalBlock style="margin-left:35px;" title="UFT parallel running mode." name="runfromfs.isParallelRunnerEnabled"
-                                field="isParallelRunnerEnabled" inline="true">
-            <f:entry field="fileSystemTestSetModel">
-                <f:property field="fileSystemTestSetModel"/>
-            </f:entry>
-        </cv:customOptionalBlock>
+    <f:entry title="Results directory" field="fsReportPath">
+        <f:textbox name="runfromfs.fsReportPath" value="${instance.runFromFileModel.fsReportPath}"/>
     </f:entry>
 
+    <f:entry title="Timeout" field="fsTimeout" style="display:block">
+        <f:textbox name="runfromfs.fsTimeout" value="${instance.runFromFileModel.fsTimeout}"/>
+    </f:entry>
 
-    <f:entry>
-        <label>Timeout</label>
-        <f:entry field="fsTimeout">
-            <f:textbox name="runfromfs.fsTimeout" value="${instance.runFromFileModel.fsTimeout}"/>
+   <f:optionalBlock name="isParallelRunnerEnabled" title="UFT parallel running mode" inline="true">
+         <f:entry field="fileSystemTestSetModel">
+            <f:property field="fileSystemTestSetModel"/>
         </f:entry>
-    </f:entry>
+   </f:optionalBlock>
 
     <f:advanced title="UFT-Specific Settings">
     	<f:section title="UFT Settings">
-		    <f:entry field="fsUftRunMode">
-		        <label style=" position: relative; bottom: -40px;">Run Mode</label>
-		        <f:entry>
-                    <select name="runPipeline.fsUftRunMode" style=" position: relative; bottom: -40px;">
-                        <j:forEach var="runMode" items="${descriptor.fsUftRunModes}">
-                            <f:option selected="${runMode.value == instance.runFromFileModel.fsUftRunMode}" value="${runMode.value}">
-                                ${runMode.description}
-                            </f:option>
-                        </j:forEach>
-                    </select>
-                </f:entry>
-			</f:entry>
+		    <f:entry title="Run Mode" field="fsUftRunMode">
+                <select name="runPipeline.fsUftRunMode">
+                    <j:forEach var="runMode" items="${descriptor.fsUftRunModes}">
+                        <f:option selected="${runMode.value == instance.runFromFileModel.fsUftRunMode}" value="${runMode.value}">
+                            ${runMode.description}
+                        </f:option>
+                    </j:forEach>
+                </select>
+            </f:entry>
+
              <f:entry>
                 <f:property field="uftSettingsModel"/>
              </f:entry>

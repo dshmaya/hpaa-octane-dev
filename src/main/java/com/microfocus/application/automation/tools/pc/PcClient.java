@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -93,11 +101,11 @@ public class PcClient {
                     logger.println(String.format("%s - %s", dateFormatter.getDate(), Messages.UsingPCCredentialsBuildParameters()));
                 else
                     logger.println(String.format("%s - %s", dateFormatter.getDate(), Messages.UsingPCCredentialsConfiguration()));
-                logger.println(String.format("%s - %s\n[PCServer='%s://%s/loadtest', User='%s']", dateFormatter.getDate(), Messages.TryingToLogin(), model.isHTTPSProtocol(), model.getPcServerName(true), usernamePCPasswordCredentials.getUsername()));
+                logger.println(String.format("%s - %s\n[PCServer='%s://%s/loadtest/%s', User='%s']", dateFormatter.getDate(), Messages.TryingToLogin(), model.isHTTPSProtocol(), restProxy.GetPcServer(), restProxy.GetTenant(), usernamePCPasswordCredentials.getUsername()));
                 loggedIn = restProxy.authenticate(usernamePCPasswordCredentials.getUsername(), usernamePCPasswordCredentials.getPassword().getPlainText());
             }
             else {
-                logger.println(String.format("%s - %s\n[PCServer='%s://%s/loadtest', User='%s']", dateFormatter.getDate(), Messages.TryingToLogin(), model.isHTTPSProtocol(), model.getPcServerName(true), PcBuilder.usernamePCPasswordCredentials.getUsername()));
+                logger.println(String.format("%s - %s\n[PCServer='%s://%s/loadtest/%s', User='%s']", dateFormatter.getDate(), Messages.TryingToLogin(), model.isHTTPSProtocol(), restProxy.GetPcServer(), restProxy.GetTenant(), PcBuilder.usernamePCPasswordCredentials.getUsername()));
                 loggedIn = restProxy.authenticate(PcBuilder.usernamePCPasswordCredentials.getUsername(), PcBuilder.usernamePCPasswordCredentials.getPassword().getPlainText());
             }
         } catch (PcException e) {
@@ -420,7 +428,11 @@ public class PcClient {
                 }
                 threeStrikes = 3;
             }
-            catch(InterruptedException|PcException e)
+            catch(InterruptedException e)
+            {
+                throw e;
+            }
+            catch(PcException e)
             {
                 threeStrikes--;
             }

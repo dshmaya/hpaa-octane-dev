@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -22,6 +30,7 @@ package com.microfocus.application.automation.tools.octane.pullrequests;
 
 import com.hp.octane.integrations.dto.scm.PullRequest;
 import com.hp.octane.integrations.dto.scm.SCMCommit;
+import com.microfocus.application.automation.tools.octane.GitFetchUtils;
 import com.microfocus.application.automation.tools.octane.Messages;
 import hudson.model.Action;
 import hudson.model.Run;
@@ -30,7 +39,6 @@ import javax.annotation.CheckForNull;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
-import java.util.TimeZone;
 
 public class PullRequestBuildAction implements Action {
 
@@ -40,9 +48,9 @@ public class PullRequestBuildAction implements Action {
     private final long minUpdateTime;
     private final String sourceBranchFilter;
     private final String targetBranchFilter;
+    private final String repositoryUrl;
 
-    private static final String DATE_TIME_FORMAT = "yyyy-MM-dd HH:mm";
-    private SimpleDateFormat updatedDateFormat = null;
+    private SimpleDateFormat dateFormat = null;
 
     @CheckForNull
     @Override
@@ -50,13 +58,14 @@ public class PullRequestBuildAction implements Action {
         return "notepad.png";
     }
 
-    public PullRequestBuildAction(final Run<?, ?> build, List<PullRequest> pullRequests, long minUpdateTime,
+    public PullRequestBuildAction(final Run<?, ?> build, List<PullRequest> pullRequests, String repositoryUrl, long minUpdateTime,
                                   String sourceBranchFilter, String targetBranchFilter) {
         this.build = build;
         this.pullRequests = pullRequests;
         this.minUpdateTime = minUpdateTime;
         this.sourceBranchFilter = sourceBranchFilter;
         this.targetBranchFilter = targetBranchFilter;
+        this.repositoryUrl = repositoryUrl;
     }
 
     @CheckForNull
@@ -81,12 +90,10 @@ public class PullRequestBuildAction implements Action {
     }
 
     public String getFormattedDate(long longTime) {
-       if (updatedDateFormat == null) {
-            updatedDateFormat = new SimpleDateFormat(DATE_TIME_FORMAT);
-            TimeZone utc = TimeZone.getTimeZone("UTC");
-            updatedDateFormat.setTimeZone(utc);
+        if (dateFormat == null) {
+            dateFormat = GitFetchUtils.generateDateFormat();
         }
-        return updatedDateFormat.format(new Date(longTime));
+        return dateFormat.format(new Date(longTime));
     }
 
     public String getTopCommits(PullRequest p) {
@@ -119,5 +126,9 @@ public class PullRequestBuildAction implements Action {
 
     public String getTargetBranchFilter() {
         return targetBranchFilter;
+    }
+
+    public String getRepositoryUrl() {
+        return repositoryUrl;
     }
 }

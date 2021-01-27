@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -23,6 +31,8 @@ package com.microfocus.application.automation.tools.octane.tests.build;
 import com.hp.octane.integrations.dto.causes.CIEventCause;
 import com.hp.octane.integrations.dto.causes.CIEventCauseType;
 import com.hp.octane.integrations.dto.snapshots.CIBuildResult;
+import com.hp.octane.integrations.utils.CIPluginSDKUtils;
+import com.hp.octane.integrations.utils.SdkConstants;
 import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.model.CIEventCausesFactory;
 import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
@@ -58,6 +68,7 @@ import java.util.Set;
 
 public class BuildHandlerUtils {
 	private static final Logger logger = SDKBasedLoggerProvider.getLogger(BuildHandlerUtils.class);
+	public static final String JOB_LEVEL_SEPARATOR = "/job/";
 
 	public static BuildDescriptor getBuildType(Run<?, ?> run) {
 		for (BuildHandlerExtension ext : BuildHandlerExtension.all()) {
@@ -143,11 +154,11 @@ public class BuildHandlerUtils {
 	}
 
 	public static String translateFolderJobName(String jobPlainName) {
-		return jobPlainName.replaceAll("/", "/job/");
+		return jobPlainName.replaceAll("/", JOB_LEVEL_SEPARATOR);
 	}
 
 	public static String revertTranslateFolderJobName(String translatedJobName) {
-		return translatedJobName.replaceAll("/job/", "/");
+		return translatedJobName.replaceAll(JOB_LEVEL_SEPARATOR, "/");
 	}
 
 	public static String translateFullDisplayName(String fullDisplayName) {
@@ -198,21 +209,7 @@ public class BuildHandlerUtils {
 
 	public static String getRootJobCiIds(Run<?, ?> run) {
 		Set<String> parents = new HashSet<>();
-		getRootJobCiIds(CIEventCausesFactory.processCauses(run), BuildHandlerUtils.getJobCiId(run), parents);
-		return String.join(";", parents);
-	}
-
-	private static void getRootJobCiIds(List<CIEventCause> causes, String prevUpstream, Set<String> parents) {
-		if (causes != null) {
-			for (CIEventCause cause : causes) {
-				if (CIEventCauseType.UPSTREAM.equals(cause.getType())) {
-					getRootJobCiIds(cause.getCauses(), cause.getProject(), parents);
-				} else {
-					if (prevUpstream != null && !prevUpstream.isEmpty()) {
-						parents.add(prevUpstream);
-					}
-				}
-			}
-		}
+		CIPluginSDKUtils.getRootJobCiIds(BuildHandlerUtils.getJobCiId(run), CIEventCausesFactory.processCauses(run), parents);
+		return String.join(SdkConstants.General.JOB_PARENT_DELIMITER, parents);
 	}
 }

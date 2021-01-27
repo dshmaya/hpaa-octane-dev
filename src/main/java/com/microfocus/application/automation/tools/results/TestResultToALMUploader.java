@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -32,7 +40,7 @@ import com.microfocus.application.automation.tools.results.service.AlmRestInfo;
 import com.microfocus.application.automation.tools.results.service.AlmRestTool;
 import com.microfocus.application.automation.tools.results.service.ExternalEntityUploadLogger;
 import com.microfocus.application.automation.tools.results.service.IExternalEntityUploadService;
-import com.microfocus.application.automation.tools.settings.AlmServerSettingsBuilder;
+import com.microfocus.application.automation.tools.settings.AlmServerSettingsGlobalConfiguration;
 import hudson.Extension;
 import hudson.FilePath;
 import hudson.Launcher;
@@ -341,8 +349,7 @@ public class TestResultToALMUploader extends Recorder implements Serializable, M
     }
 
     private String getAlmServerUrl(String almServerName) {
-        AlmServerSettingsModel[] almServers = Hudson.getInstance().getDescriptorByType(
-                AlmServerSettingsBuilder.DescriptorImpl.class).getInstallations();
+        AlmServerSettingsModel[] almServers = AlmServerSettingsGlobalConfiguration.getInstance().getInstallations();
         if(almServers != null && almServers.length >0) {
             for(AlmServerSettingsModel almServerModel: almServers) {
                 if(almServerName.equalsIgnoreCase(almServerModel.getAlmServerName())) {
@@ -417,13 +424,11 @@ public class TestResultToALMUploader extends Recorder implements Serializable, M
         }
 
         public boolean hasAlmServers() {
-            return Hudson.getInstance().getDescriptorByType(
-                    AlmServerSettingsBuilder.DescriptorImpl.class).hasAlmServers();
+            return AlmServerSettingsGlobalConfiguration.getInstance().hasAlmServers();
         }
 
         public AlmServerSettingsModel[] getAlmServers() {
-            return Hudson.getInstance().getDescriptorByType(
-                    AlmServerSettingsBuilder.DescriptorImpl.class).getInstallations();
+            return AlmServerSettingsGlobalConfiguration.getInstance().getInstallations();
         }
 
         public FormValidation doCheckAlmUserName(@QueryParameter String value) {

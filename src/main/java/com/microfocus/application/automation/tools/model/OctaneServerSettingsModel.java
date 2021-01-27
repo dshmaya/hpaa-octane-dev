@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -23,15 +31,17 @@ package com.microfocus.application.automation.tools.model;
 import com.microfocus.application.automation.tools.octane.exceptions.AggregatedMessagesException;
 import hudson.util.Secret;
 import org.apache.commons.lang.StringUtils;
+import org.apache.http.annotation.Obsolete;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
 
+import java.io.Serializable;
 import java.util.*;
 
 /*
  * Model for sorting the Octane configuration
  */
-public class OctaneServerSettingsModel {
+public class OctaneServerSettingsModel implements Serializable {
     private String internalId = UUID.randomUUID().toString();
 
     private String identity;
@@ -43,15 +53,17 @@ public class OctaneServerSettingsModel {
     private String impersonatedUser;
     private boolean suspend;
     private String sscBaseToken;
+    private boolean fortifyParamsConverted;
 
     // inferred from uiLocation
     private String location;
     private String sharedSpace;
-    private long maxTimeoutHours;
+
 
     private String workspace2ImpersonatedUserConf;
-    // inferred from workspace2ImpersonatedUserConf
     private Map<Long, String> workspace2ImpersonatedUserMap;
+
+    private String parameters;
 
     public OctaneServerSettingsModel() {
     }
@@ -59,9 +71,9 @@ public class OctaneServerSettingsModel {
     @DataBoundConstructor
     public OctaneServerSettingsModel(String uiLocation, String username, Secret password, String impersonatedUser) {
         this.uiLocation = StringUtils.trim(uiLocation);
-        this.username = username;
+        this.username = StringUtils.trim(username);
         this.password = password;
-        this.impersonatedUser = impersonatedUser;
+        this.impersonatedUser = StringUtils.trim(impersonatedUser);
     }
 
     public String getInternalId() {
@@ -77,10 +89,12 @@ public class OctaneServerSettingsModel {
         this.suspend = suspend;
     }
 
+    @Obsolete
     public String getSscBaseToken() {
         return this.sscBaseToken;
     }
 
+    @Obsolete
     @DataBoundSetter
     public void setSscBaseToken(String sscBaseToken) {
         this.sscBaseToken = sscBaseToken;
@@ -106,11 +120,9 @@ public class OctaneServerSettingsModel {
         return identity;
     }
 
+    @DataBoundSetter
     public void setIdentity(String identity) {
-        if (StringUtils.isEmpty(identity)) {
-            throw new IllegalArgumentException("Empty identity is not allowed");
-        }
-        this.identity = identity;
+        this.identity = StringUtils.trim(identity);
         this.setIdentityFrom(new Date().getTime());
     }
 
@@ -123,7 +135,7 @@ public class OctaneServerSettingsModel {
     }
 
     public void setLocation(String location) {
-        this.location = location;
+        this.location = StringUtils.trim(location);
     }
 
     public String getSharedSpace() {
@@ -131,19 +143,11 @@ public class OctaneServerSettingsModel {
     }
 
     public void setSharedSpace(String sharedSpace) {
-        this.sharedSpace = sharedSpace;
+        this.sharedSpace = StringUtils.trim(sharedSpace);
     }
 
     public void setIdentityFrom(Long identityFrom) {
         this.identityFrom = identityFrom;
-    }
-
-    public long getMaxTimeoutHours() {
-        return maxTimeoutHours;
-    }
-
-    public void setMaxTimeoutHours(long maxTimeoutHours) {
-        this.maxTimeoutHours = maxTimeoutHours;
     }
 
     public boolean isValid() {
@@ -167,20 +171,19 @@ public class OctaneServerSettingsModel {
         if (o == null || getClass() != o.getClass()) return false;
         OctaneServerSettingsModel that = (OctaneServerSettingsModel) o;
         return suspend == that.suspend &&
-                maxTimeoutHours == that.maxTimeoutHours &&
                 Objects.equals(identity, that.identity) &&
                 Objects.equals(username, that.username) &&
                 Objects.equals(password, that.password) &&
                 Objects.equals(impersonatedUser, that.impersonatedUser) &&
-                Objects.equals(sscBaseToken, that.sscBaseToken) &&
                 Objects.equals(location, that.location) &&
                 Objects.equals(workspace2ImpersonatedUserConf, that.workspace2ImpersonatedUserConf) &&
+                Objects.equals(parameters, that.parameters) &&
                 Objects.equals(sharedSpace, that.sharedSpace);
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(identity, username, password, impersonatedUser, suspend, sscBaseToken, location, sharedSpace, maxTimeoutHours, internalId, getWorkspace2ImpersonatedUserConf());
+        return Objects.hash(identity, username, password, impersonatedUser, suspend, location, sharedSpace, internalId, getWorkspace2ImpersonatedUserConf());
     }
 
     public String getWorkspace2ImpersonatedUserConf() {
@@ -225,17 +228,17 @@ public class OctaneServerSettingsModel {
             return;
         }
 
-        String[] subPart = workspaceConfiguration.split(":");
-        if (subPart.length != 2) {
+        int splitterIndex = workspaceConfiguration.indexOf(':');
+        if (splitterIndex == -1) {
             throw new IllegalArgumentException("Workspace configuration is not valid, valid format is 'Workspace ID:jenkins user': " + workspaceConfigurationTrimmed);
         }
 
-        Long workspaceId = getLongOrNull(subPart[0]);
+        Long workspaceId = getLongOrNull(workspaceConfiguration.substring(0, splitterIndex));
         if (workspaceId == null) {
             throw new IllegalArgumentException("Workspace configuration is not valid, workspace ID must be numeric: " + workspaceConfigurationTrimmed);
         }
 
-        String user = subPart[1].trim();
+        String user = workspaceConfiguration.substring(splitterIndex + 1).trim();
         if (user.isEmpty()) {
             throw new IllegalArgumentException("Workspace configuration is not valid, user value is empty: " + workspaceConfigurationTrimmed);
         }
@@ -253,5 +256,53 @@ public class OctaneServerSettingsModel {
         } catch (NumberFormatException e) {
             return null;
         }
+    }
+
+    public String getParameters() {
+        return parameters;
+    }
+
+    public Map<String, String> getParametersAsMap() {
+        return parseParameters(parameters);
+    }
+
+
+    public static Map<String, String> parseParameters(String rawParameters) {
+        Map<String, String> map = new HashMap<>();
+        if (rawParameters == null) {
+            return map;
+        }
+        String[] parts = rawParameters.split("\\n");
+        for (String part : parts) {
+            String trimmedPart = part.trim();
+            if (trimmedPart.isEmpty() || trimmedPart.startsWith("#")) {
+                continue;
+            }
+            String key;
+            String value = null;
+            int separation = trimmedPart.indexOf(':');
+            if (separation > 0) {
+                key = trimmedPart.substring(0, separation).trim();
+                value = trimmedPart.substring(separation + 1).trim();
+            } else {
+                key = trimmedPart;
+            }
+            map.put(key, value);
+        }
+
+        return map;
+    }
+
+    @DataBoundSetter
+    public void setParameters(String parameters) {
+        this.parameters = parameters;
+    }
+
+    public boolean isFortifyParamsConverted() {
+        return fortifyParamsConverted;
+    }
+
+    public void setFortifyParamsConverted(boolean fortifyParamsConverted) {
+        this.fortifyParamsConverted = fortifyParamsConverted;
     }
 }

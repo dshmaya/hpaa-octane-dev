@@ -1,23 +1,29 @@
 /*
- *
- *  Certain versions of software and/or documents (“Material”) accessible here may contain branding from
- *  Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
- *  the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
- *  and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
- *  marks are the property of their respective owners.
+ * Certain versions of software and/or documents ("Material") accessible here may contain branding from
+ * Hewlett-Packard Company (now HP Inc.) and Hewlett Packard Enterprise Company.  As of September 1, 2017,
+ * the Material is now offered by Micro Focus, a separately owned and operated company.  Any reference to the HP
+ * and Hewlett Packard Enterprise/HPE marks is historical in nature, and the HP and Hewlett Packard Enterprise/HPE
+ * marks are the property of their respective owners.
  * __________________________________________________________________
  * MIT License
  *
- * © Copyright 2012-2019 Micro Focus or one of its affiliates..
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors (“Micro Focus”) are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
- *
  */
 
 using System;
@@ -28,6 +34,7 @@ using System.Reflection;
 using HpToolsLauncher.Properties;
 using HpToolsLauncher.TestRunners;
 using HpToolsLauncher.RTS;
+
 
 namespace HpToolsLauncher
 {
@@ -281,8 +288,22 @@ namespace HpToolsLauncher
             try
             {
                 var start = DateTime.Now;
+
+                Dictionary<string, int> indexList = new Dictionary<string, int>();
+                foreach(var test in _tests)
+                {
+                    indexList[test.TestPath] = 0;
+                }
+
+                Dictionary<string, int> rerunList = createDictionary(_tests);
+
                 foreach (var test in _tests)
                 {
+                    if (indexList[test.TestPath] == 0)
+                    {
+                        indexList[test.TestPath] = 1;
+                    }
+
                     if (RunCancelled()) break;
 
                     var testStart = DateTime.Now;
@@ -341,7 +362,44 @@ namespace HpToolsLauncher
 
                     UpdateCounters(runResult.TestState);
                     var testTotalTime = (DateTime.Now - testStart).TotalSeconds;
+
+                    //create test folders
+                    if (rerunList[test.TestPath] > 0)
+                    {
+                        if (!Directory.Exists(Path.Combine(test.TestPath, "Report1")))
+                        {
+                            rerunList[test.TestPath]--;
+                        }
+                        else
+                        {
+                            indexList[test.TestPath]++;
+                            rerunList[test.TestPath]--;
+                        }
+                    }
+
+                    //update report folder
+                    String uftReportDir = Path.Combine(test.TestPath, "Report");
+                    String uftReportDirNew = Path.Combine(test.TestPath, "Report" + indexList[test.TestPath]);
+
+                    try
+                    {
+                        if (Directory.Exists(uftReportDir))
+                        {
+                            if (Directory.Exists(uftReportDirNew))
+                            {
+                                Helper.DeleteDirectory(uftReportDirNew);
+                            }
+
+                            Directory.Move(uftReportDir, uftReportDirNew);
+                        }
+                    }
+                    catch
+                    {
+                        System.Threading.Thread.Sleep(1000);
+                        Directory.Move(uftReportDir, uftReportDirNew);
+                    } 
                 }
+
                 totalTime = (DateTime.Now - start).TotalSeconds;
             }
             finally
@@ -358,6 +416,25 @@ namespace HpToolsLauncher
             }
 
             return activeRunDesc;
+        }
+
+             
+        private Dictionary<string, int> createDictionary(List<TestInfo> validTests)
+        {
+            var rerunList = new Dictionary<string, int>();
+            foreach (var item in validTests)
+            {
+                if (!rerunList.ContainsKey(item.TestPath))
+                {
+                    rerunList.Add(item.TestPath, 1);
+                }
+                else
+                {
+                    rerunList[item.TestPath]++;
+                }
+            }
+
+            return rerunList;
         }
 
         /// <summary>

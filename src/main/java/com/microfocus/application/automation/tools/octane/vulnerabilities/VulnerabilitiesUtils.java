@@ -7,23 +7,31 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
 package com.microfocus.application.automation.tools.octane.vulnerabilities;
 
+import com.hp.octane.integrations.OctaneClient;
 import com.hp.octane.integrations.OctaneSDK;
+import com.hp.octane.integrations.services.configurationparameters.FortifySSCFetchTimeoutParameter;
 import com.hp.octane.integrations.services.vulnerabilities.ToolType;
-import com.microfocus.application.automation.tools.model.OctaneServerSettingsModel;
-import com.microfocus.application.automation.tools.octane.configuration.ConfigurationService;
 import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.configuration.SSCServerConfigUtil;
 import com.microfocus.application.automation.tools.octane.tests.build.BuildHandlerUtils;
@@ -63,15 +71,26 @@ public class VulnerabilitiesUtils {
         String buildCiId = BuildHandlerUtils.getBuildCiId(run);
 
         final Long queueItemTimeoutHours = getQueueItemTimeoutHoursFromJob(run);
+        String parents = BuildHandlerUtils.getRootJobCiIds(run);
         OctaneSDK.getClients().forEach(octaneClient -> {
-            OctaneServerSettingsModel settings = ConfigurationService.getSettings(octaneClient.getInstanceId());
             octaneClient.getVulnerabilitiesService().enqueueRetrieveAndPushVulnerabilities(
                     jobCiId,
                     buildCiId, toolType,
                     run.getStartTimeInMillis(),
-                    queueItemTimeoutHours == null ? settings.getMaxTimeoutHours() : queueItemTimeoutHours,
-                    props);
+                    queueItemTimeoutHours == null ? getFortifyTimeoutHours(octaneClient.getInstanceId()) : queueItemTimeoutHours,
+                    props,
+                    parents);
         });
+    }
+
+    public static int getFortifyTimeoutHours(String instanceId){
+        OctaneClient octaneClient = OctaneSDK.getClientByInstanceId(instanceId);
+        FortifySSCFetchTimeoutParameter parameter = (FortifySSCFetchTimeoutParameter) octaneClient.getConfigurationService().getConfiguration()
+                .getParameter(FortifySSCFetchTimeoutParameter.KEY);
+        if (parameter != null) {
+            return parameter.getTimeout();
+        }
+        return FortifySSCFetchTimeoutParameter.DEFAULT_TIMEOUT;
     }
 
     private static Long getQueueItemTimeoutHoursFromJob(Run run) {

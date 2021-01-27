@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -25,7 +33,7 @@ import hudson.Extension;
 import hudson.Util;
 import hudson.model.AbstractDescribableImpl;
 import hudson.model.Descriptor;
-import hudson.util.FormValidation;
+
 import hudson.util.VariableResolver;
 
 import java.util.Arrays;
@@ -37,7 +45,7 @@ import java.util.Properties;
 
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.QueryParameter;
+
 
 import javax.annotation.Nonnull;
 
@@ -54,7 +62,7 @@ public class RunFromAlmModel extends AbstractDescribableImpl<RunFromAlmModel> {
 
     public final static int DEFAULT_TIMEOUT = 36000; // 10 hrs
     public final static String ALM_PASSWORD_KEY = "almPassword";
-    public final static String ALM_API_KEY_SECRET = "almApiKey";
+    public final static String ALM_API_KEY_SECRET = "almApiKeySecret";
 
     private String almServerName;
     private String almUserName;
@@ -71,11 +79,10 @@ public class RunFromAlmModel extends AbstractDescribableImpl<RunFromAlmModel> {
     private String almApiKey;
 
     @DataBoundConstructor
-    public RunFromAlmModel(String almServerName, String almUserName,
-                           String almPassword, String almDomain, String almProject,
+    public RunFromAlmModel(String almServerName, String almUserName, String almPassword, String almDomain, String almProject,
                            String almTestSets, String almRunResultsMode, String almTimeout,
                            String almRunMode, String almRunHost, Boolean isSSOEnabled,
-                           String almClientID, String almApiKey){
+                           String almClientID, String almApiKey) {
 
         this.almServerName = almServerName;
         this.almUserName = almUserName;
@@ -142,6 +149,10 @@ public class RunFromAlmModel extends AbstractDescribableImpl<RunFromAlmModel> {
         return isSSOEnabled;
     }
 
+    public void setIsSSOEnabled(Boolean isSSOEnabled){
+        this.isSSOEnabled = isSSOEnabled;
+    }
+
     public String getAlmClientID() { return almClientID; }
 
     public String getAlmApiKey() { return almApiKey; }
@@ -155,9 +166,11 @@ public class RunFromAlmModel extends AbstractDescribableImpl<RunFromAlmModel> {
         return CreateProperties(null, null);
     }
 
+
     private Properties CreateProperties(EnvVars envVars,
                                         VariableResolver<String> varResolver) {
         Properties props = new Properties();
+
         if(isSSOEnabled != null){
             props.put("SSOEnabled", Boolean.toString(isSSOEnabled));
         }else{
@@ -165,15 +178,12 @@ public class RunFromAlmModel extends AbstractDescribableImpl<RunFromAlmModel> {
         }
 
         if (envVars == null) {
-            props.put("almUserName", almUserName);
-            props.put(ALM_PASSWORD_KEY, almPassword);
+            props.put("almUsername", almUserName);
             props.put("almDomain", almDomain);
             props.put("almProject", almProject);
         } else {
-
-            props.put("almUserName",
+           props.put("almUsername",
                     Util.replaceMacro(envVars.expand(almUserName), varResolver));
-            props.put(ALM_PASSWORD_KEY, almPassword);
             props.put("almDomain",
                     Util.replaceMacro(envVars.expand(almDomain), varResolver));
             props.put("almProject",
@@ -206,20 +216,10 @@ public class RunFromAlmModel extends AbstractDescribableImpl<RunFromAlmModel> {
 
         props.put("almRunMode", almRunMode);
         props.put("almRunHost", almRunHost);
-        if(almClientID != null){
-            props.put("almClientID", almClientID);
-        } else {
-            props.put("almClientID", "");
-        }
-
-        if(almApiKey != null){
-            props.put("almApiKey", almApiKey);
-        }else{
-            props.put("almApiKey", "");
-        }
 
         return props;
     }
+
 
     @Extension
     public static class DescriptorImpl extends Descriptor<RunFromAlmModel> {

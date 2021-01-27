@@ -7,14 +7,22 @@
   ~ __________________________________________________________________
   ~ MIT License
   ~
-  ~ (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+  ~ (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
   ~
-  ~ The only warranties for products and services of Micro Focus and its affiliates
-  ~ and licensors ("Micro Focus") are set forth in the express warranty statements
-  ~ accompanying such products and services. Nothing herein should be construed as
-  ~ constituting an additional warranty. Micro Focus shall not be liable for technical
-  ~ or editorial errors or omissions contained herein.
-  ~ The information contained herein is subject to change without notice.
+  ~ Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+  ~ documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+  ~ the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+  ~ and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+  ~
+  ~ The above copyright notice and this permission notice shall be included in all copies or
+  ~ substantial portions of the Software.
+  ~
+  ~ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+  ~ THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  ~ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+  ~ TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  ~ SOFTWARE.
+  ~
   ~ ___________________________________________________________________
   -->
 <div>
@@ -27,11 +35,11 @@
 
     The following are the components that you can use in the "Custom conversion format" :
     <ul style="padding-left: 15px;">
-        <li><b>testPattern</b> - describes the pattern for converting single test. It uses reserved words (<b>$package</b>,<b>$class</b>,<b>$testName</b>) that will be
-    replaced by real test data. All other characters in the pattern will appear in the final result as is.</li>
+        <li><b>testPattern</b> - describes the pattern for converting single test. All parameters that needs to be replaced be real test data, should start with $, for example <b>$package</b>, <b>$class</b>, <b>$testName</b>, <b>$externalRunId</b>, <b>$myCustomParam</b>. All other characters in the pattern will appear in the final result as is.</li>
         <li><b>testDelimiter</b> - the delimiter used to separate different tests.</li>
         <li><b>prefix</b>  - a prefix for the whole conversion result.</li>
         <li><b>suffix</b>  - a suffix for the whole conversion result.</li>
+        <li><b>allowDuplication</b>  - indicate whether duplications are allowed in final result. Default is true.</li>
         <li><b>testsToRunConvertedParameter</b>  - the parameter name that will contain the conversion result. Default value is "testsToRunConverted".</li>
         <li><b>replacements</b>  - the array of replace methods.</li>
 

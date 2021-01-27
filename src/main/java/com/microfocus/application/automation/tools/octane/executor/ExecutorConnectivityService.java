@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -52,8 +60,8 @@ import java.util.*;
  */
 public class ExecutorConnectivityService {
 	private static final Logger logger = SDKBasedLoggerProvider.getLogger(ExecutorConnectivityService.class);
-	private static final Map<Permission, String> requirePremissions = initRequirePremissions();
-	private static final Map<Permission, String> credentialsPremissions = initCredentialsPremissions();
+	private static final Map<Permission, String> requirePremissions = initRequirePermissions();
+	private static final Map<Permission, String> credentialsPremissions = initCredentialsPermissions();
 	private static final String PLUGIN_NAME = "Application Automation Tools";
 
 	/**
@@ -63,19 +71,22 @@ public class ExecutorConnectivityService {
 	 * @return OctaneResponse return status code and error to show for client
 	 */
 	public static OctaneResponse checkRepositoryConnectivity(TestConnectivityInfo testConnectivityInfo) {
+		logger.info("checkRepositoryConnectivity started to " + testConnectivityInfo.getScmRepository().getUrl());
 		OctaneResponse result = DTOFactory.getInstance().newDTO(OctaneResponse.class);
 		if (testConnectivityInfo.getScmRepository() != null && StringUtils.isNotEmpty(testConnectivityInfo.getScmRepository().getUrl())) {
 
+			boolean needCredentialsPermission = false;
 			BaseStandardCredentials credentials = null;
 			if (StringUtils.isNotEmpty(testConnectivityInfo.getUsername()) && testConnectivityInfo.getPassword() != null) {
 				credentials = new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, null, null, testConnectivityInfo.getUsername(), testConnectivityInfo.getPassword());
+				needCredentialsPermission = true;
 			} else if (StringUtils.isNotEmpty(testConnectivityInfo.getCredentialsId())) {
 				credentials = getCredentialsById(testConnectivityInfo.getCredentialsId());
 			}
 
-			List<String> permissionResult = checkCIPermissions(Jenkins.getInstanceOrNull(), credentials != null);
+			List<String> permissionResult = checkCIPermissions(Jenkins.getInstanceOrNull(), needCredentialsPermission);
 
-			if (permissionResult != null && !permissionResult.isEmpty()) {
+			if (!permissionResult.isEmpty()) {
 				String user = User.current() != null ? User.current().getId() : Jenkins.ANONYMOUS.getPrincipal().toString();
 				String error = String.format("Failed : User \'%s\' is missing permissions \'%s\' on CI server", user, permissionResult);
 				logger.error(error);
@@ -96,6 +107,11 @@ public class ExecutorConnectivityService {
 			result.setStatus(HttpStatus.SC_BAD_REQUEST);
 			result.setBody("Missing input for testing");
 		}
+		if (result.getStatus() != HttpStatus.SC_OK) {
+			logger.info("checkRepositoryConnectivity failed: " + result.getBody());
+		}else{
+			logger.info("checkRepositoryConnectivity ok" );
+		}
 		return result;
 	}
 
@@ -109,24 +125,10 @@ public class ExecutorConnectivityService {
 	public static OctaneResponse upsertRepositoryCredentials(final CredentialsInfo credentialsInfo) {
 
 		OctaneResponse result = DTOFactory.getInstance().newDTO(OctaneResponse.class);
-		result.setStatus(HttpStatus.SC_CREATED);
+		result.setStatus(HttpStatus.SC_OK);
 		BaseStandardCredentials jenkinsCredentials = null;
 
-		if (StringUtils.isNotEmpty(credentialsInfo.getCredentialsId())) {
-			jenkinsCredentials = getCredentialsById(credentialsInfo.getCredentialsId());
-			if (jenkinsCredentials != null) {
-				BaseStandardCredentials newCred = new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, credentialsInfo.getCredentialsId(),
-						null, credentialsInfo.getUsername(), credentialsInfo.getPassword());
-				CredentialsStore store = new SystemCredentialsProvider.StoreImpl();
-				try {
-					store.updateCredentials(Domain.global(), jenkinsCredentials, newCred);
-				} catch (IOException e) {
-					logger.error("Failed to update credentials " + e.getMessage());
-					result.setStatus(HttpStatus.SC_INTERNAL_SERVER_ERROR);
-					result.setBody("Failed to update credentials " + e.getMessage());
-				}
-			}
-		} else if (StringUtils.isNotEmpty(credentialsInfo.getUsername()) && credentialsInfo.getPassword() != null) {
+		if (StringUtils.isNotEmpty(credentialsInfo.getUsername()) && credentialsInfo.getPassword() != null) {
 			jenkinsCredentials = tryGetCredentialsByUsernamePassword(credentialsInfo.getUsername(), credentialsInfo.getPassword());
 			if (jenkinsCredentials == null) {
 				SimpleDateFormat formatter = new SimpleDateFormat("yyyy-MM-dd");
@@ -134,7 +136,10 @@ public class ExecutorConnectivityService {
 				BaseStandardCredentials c = new UsernamePasswordCredentialsImpl(CredentialsScope.GLOBAL, credentialsInfo.getCredentialsId(), desc, credentialsInfo.getUsername(), credentialsInfo.getPassword());
 				CredentialsStore store = new SystemCredentialsProvider.StoreImpl();
 				try {
-					store.addCredentials(Domain.global(), c);
+					if(store.addCredentials(Domain.global(), c)){
+						jenkinsCredentials = c;
+                        result.setStatus(HttpStatus.SC_CREATED);
+					}
 				} catch (IOException e) {
 					logger.error("Failed to add credentials " + e.getMessage());
 					result.setStatus(HttpStatus.SC_INTERNAL_SERVER_ERROR);
@@ -171,10 +176,10 @@ public class ExecutorConnectivityService {
 		return null;
 	}
 
-	private static List<String> checkCIPermissions(final Jenkins jenkins, boolean hasCredentials) {
+	private static List<String> checkCIPermissions(final Jenkins jenkins, boolean checkCredentialsPermissions) {
 		List<String> result = new ArrayList<>();
 		checkPermissions(jenkins, result, requirePremissions);
-		if (hasCredentials) {
+		if (checkCredentialsPermissions) {
 			checkPermissions(jenkins, result, credentialsPremissions);
 		}
 		return result;
@@ -188,18 +193,16 @@ public class ExecutorConnectivityService {
 		}
 	}
 
-	private static Map<Permission, String> initRequirePremissions() {
+	private static Map<Permission, String> initRequirePermissions() {
 		Map<Permission, String> result = new HashMap<>();
 		result.put(Item.CREATE, "Job.CREATE");
-		result.put(Item.DELETE, "Job.DELETE");
 		result.put(Item.READ, "Job.READ");
 		return result;
 	}
 
-	private static Map<Permission, String> initCredentialsPremissions() {
+	private static Map<Permission, String> initCredentialsPermissions() {
 		Map<Permission, String> result = new HashMap<>();
 		result.put(CredentialsProvider.CREATE, "Credentials.CREATE");
-		result.put(CredentialsProvider.UPDATE, "Credentials.UPDATE");
 		return result;
 
 	}

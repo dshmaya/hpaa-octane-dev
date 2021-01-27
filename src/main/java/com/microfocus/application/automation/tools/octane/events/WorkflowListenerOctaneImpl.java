@@ -7,14 +7,22 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
@@ -166,34 +174,31 @@ public class WorkflowListenerOctaneImpl implements GraphListener {
 
 	private void sendStageStartedEvent(StepStartNode stepStartNode) {
 		logger.debug("node " + stepStartNode + " detected as Stage Start node");
-		CIEvent event;
-		WorkflowRun parentRun = BuildHandlerUtils.extractParentRun(stepStartNode);
-		event = dtoFactory.newDTO(CIEvent.class)
-				.setEventType(CIEventType.STARTED)
-				.setPhaseType(PhaseType.INTERNAL)
-				.setProject(stepStartNode.getDisplayName())
-				.setBuildCiId(BuildHandlerUtils.getBuildCiId(parentRun))
-				.setNumber(String.valueOf(parentRun.getNumber()))
-				.setStartTime(TimingAction.getStartTime(stepStartNode))
-				.setCauses(CIEventCausesFactory.processCauses(stepStartNode));
+		CIEvent event = prepareStageEvent(stepStartNode).setEventType(CIEventType.STARTED);
 		CIJenkinsServicesImpl.publishEventToRelevantClients(event);
 	}
 
 	private void sendStageFinishedEvent(StepEndNode stepEndNode) {
 		logger.debug("node " + stepEndNode + " detected as Stage End node");
-		WorkflowRun parentRun = BuildHandlerUtils.extractParentRun(stepEndNode);
 		StepStartNode stepStartNode = stepEndNode.getStartNode();
-		CIEvent event = dtoFactory.newDTO(CIEvent.class)
+		CIEvent event = prepareStageEvent(stepStartNode)
 				.setEventType(CIEventType.FINISHED)
+				.setDuration(TimingAction.getStartTime(stepEndNode) - TimingAction.getStartTime(stepStartNode))
+				.setResult(extractFlowNodeResult(stepEndNode));
+
+		CIJenkinsServicesImpl.publishEventToRelevantClients(event);
+	}
+
+	private CIEvent prepareStageEvent(StepStartNode stepStartNode) {
+		WorkflowRun parentRun = BuildHandlerUtils.extractParentRun(stepStartNode);
+		return dtoFactory.newDTO(CIEvent.class)
 				.setPhaseType(PhaseType.INTERNAL)
+				.setIsVirtualProject(true)
 				.setProject(stepStartNode.getDisplayName())
 				.setBuildCiId(BuildHandlerUtils.getBuildCiId(parentRun))
 				.setNumber(String.valueOf(parentRun.getNumber()))
 				.setStartTime(TimingAction.getStartTime(stepStartNode))
-				.setDuration(TimingAction.getStartTime(stepEndNode) - TimingAction.getStartTime(stepStartNode))
-				.setResult(extractFlowNodeResult(stepEndNode))
-				.setCauses(CIEventCausesFactory.processCauses(stepEndNode));
-		CIJenkinsServicesImpl.publishEventToRelevantClients(event);
+				.setCauses(CIEventCausesFactory.processCauses(stepStartNode));
 	}
 
 	private CIBuildResult extractFlowNodeResult(FlowNode node) {

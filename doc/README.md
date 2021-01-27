@@ -5,7 +5,7 @@ This  [Micro Focus Application Automation Tools plugin](https://plugins.jenkins.
 
 ### Jenkins versions
 
-Beginning version 5.5, this plugin only supports the latest five LTS versions of Jenkins (currently 2.138.4 ). This is a result of the Jenkins policy to no longer support older update centers. Jenkins now requires you to have Java 8 installed on the machine. To recover any information lost during an upgrade relating to package names, backup the Jenkins folder and then run the [Rebranding script](https://wiki.jenkins.io/display/JENKINS/Micro+Focus+Application+Automation+Tools#MicroFocusApplicationAutomationTools-UserGuide).
+Beginning version 5.5, this plugin only supports the latest five LTS versions of Jenkins (minimum version is 2.190.1). This is a result of the Jenkins policy to no longer support older update centers. Jenkins now requires you to have Java 8 installed on the machine. To recover any information lost during an upgrade relating to package names, backup the Jenkins folder and then run the [Rebranding script](https://wiki.jenkins.io/display/JENKINS/Micro+Focus+Application+Automation+Tools#MicroFocusApplicationAutomationTools-UserGuide).
 
 ### Submit issues and feedback through JIRA
 
@@ -16,7 +16,7 @@ A list of known bugs is available [here](https://issues.jenkins-ci.org/issues/?j
 
 ## Table of Contents
 
-[What's New in version 6.0](#what's-new-in-version-6.0)
+[New Features and Enhancements](#new-features-and-enhancements)
 
 [Changelog](#changelog)
 
@@ -24,7 +24,7 @@ A list of known bugs is available [here](https://issues.jenkins-ci.org/issues/?j
 
 [Prerequisites](#prerequisites)
 
-[User Guide](#userguide)
+[User Guide](#user-guide)
 
 - [Rebranding Script](#rebranding-script)
 - [Create an execution node](#create-an-execution-node)
@@ -34,7 +34,7 @@ A list of known bugs is available [here](https://issues.jenkins-ci.org/issues/?j
 
 [Enable non-English languages](#enable-non-english-languages)
 
-[Configuration for Java Web Start clients](#configuration-for-Java-web-start-clients)
+[Configuration for Java Web Start clients](#configuration-for-java-web-start-clients)
 
 [Tips and Troubleshooting](#tips-and-troubleshooting)
 
@@ -43,7 +43,7 @@ A list of known bugs is available [here](https://issues.jenkins-ci.org/issues/?j
 
 - [Integration Issues](#integration-issues)
 
-- [Workarounds for viewing LoadRunner Performance reports](#workaround-for-viewing-loadrunner-performance-reports)
+- [Workarounds for viewing LoadRunner Performance reports](#workarounds-for-viewing-loadrunner-performance-reports)
 
 
 
@@ -51,16 +51,21 @@ A list of known bugs is available [here](https://issues.jenkins-ci.org/issues/?j
 
 Starting with version 1.641 (or 1.625.3), Jenkins introduced the  **Content-Security-Policy**  header. This causes some of the integration links, such as links to reports, to become inoperable. For details, see [Configuring Content Security Policy](https://wiki.jenkins.io/display/JENKINS/Configuring+Content+Security+Policy) and [Jenkins Security Advisory ](https://jenkins.io/security/advisory/2015-12-09/). For suggested workarounds until the issue is resolved, see [Content Security Policy Header](#content-security-policy-header).
 
+## New Features and Enhancements in version 6.5
 
+Version 6.5 introduced the following enhancement(s):
 
-## What&#39;s new in version 6.0
+**General**
 
-Version 6.0 introduced the following enhancement(s):
+- “github-branch-source” dependency was removed.
+- Certified for Jenkins version 2.263.1.
 
 **ALM Octane**
 
-- You can now SET/GET milestones on ALM Octane Pipeline configurations.
-
+- New option to cache the job list for pipeline creation in ALM Octane
+- Caching of Octane pipeline roots, to avoid sending non-relevant events/tasks/logs to ALM Octane
+- Added ability to execute UFT tests with parameters from ALM Octane
+- Bug fix: UFT test descriptions are properly formatted in ALM Octane
 
 For information about enhancements introduced in previous versions, see [What's new in earlier versions](WhatsNewEarlier.md). 
 
@@ -96,7 +101,7 @@ This plugin supports the following Micro Focus product versions:
 | LoadRunner Enterprise (formerly Performance Center) | 12.xx (12.53 or higher required for trend reports), 2020     | [LoadRunner Enterprise Help Center](https://admhelp.microfocus.com/pc/en/latest/online_help/Content/PC/Continuous-Integration-Jenkins.htm) |
 | Service Virtualization                              | 3.80 and higher                                              | [Service Virtualization Help Center](https://admhelp.microfocus.com/sv/en/latest/Help/Content/UG/c_continuous_integration.htm) |
 | UFT One (formerly UFT)                              | 12.xx and 14.03 and higher                                   | [UFT One Help Center](https://admhelp.microfocus.com/uft/en/latest/UFT_Help/Content/User_Guide/Jenkins.htm) |
-| UFT Developer (formerly LeanFT)                     | 14.03 and higher                                             | [UFT Developer Help Center](https://admhelp.microfocus.com/leanft/en/14.50/HelpCenter/Content/HowTo/CI_Tools.htm)<br />Blog: [Integrating LeanFT with Jenkins  in just a few simple steps](https://community.softwaregrp.com/t5/Quality-and-Testing-Blog/Integrating-LeanFT-with-Jenkins-in-just-a-few-simple-steps/ba-p/247321#.WpzwYOhubcte%20steps) |
+| UFT Developer (formerly LeanFT)                     | 14.03 and higher                                             | [UFT Developer Help Center](https://admhelp.microfocus.com/leanft/en/latest/HelpCenter/Content/HowTo/CI_Tools.htm)<br />Blog: [Integrating LeanFT with Jenkins  in just a few simple steps](https://community.softwaregrp.com/t5/Quality-and-Testing-Blog/Integrating-LeanFT-with-Jenkins-in-just-a-few-simple-steps/ba-p/247321#.WpzwYOhubcte%20steps) |
 
 ## Prerequisites
 
@@ -293,7 +298,6 @@ The *interactive" flag causes the empty black Java window to be displayed.
 <onfailure action="restart" />
 </service>
 ```
-
 ## Configuration for Java Web Start clients
 
 1. On the Jenkins master machine, go to  **Manage Jenkins --> Manage Nodes**. Click the relevant node or slave. and select  **Slave --> Configure --> Advanced**.

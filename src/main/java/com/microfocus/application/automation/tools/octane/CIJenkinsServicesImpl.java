@@ -7,20 +7,33 @@
  * __________________________________________________________________
  * MIT License
  *
- * (c) Copyright 2012-2019 Micro Focus or one of its affiliates.
+ * (c) Copyright 2012-2021 Micro Focus or one of its affiliates.
  *
- * The only warranties for products and services of Micro Focus and its affiliates
- * and licensors ("Micro Focus") are set forth in the express warranty statements
- * accompanying such products and services. Nothing herein should be construed as
- * constituting an additional warranty. Micro Focus shall not be liable for technical
- * or editorial errors or omissions contained herein.
- * The information contained herein is subject to change without notice.
+ * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated
+ * documentation files (the "Software"), to deal in the Software without restriction, including without limitation
+ * the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software,
+ * and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+ *
+ * The above copyright notice and this permission notice shall be included in all copies or
+ * substantial portions of the Software.
+ *
+ * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO
+ * THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+ * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+ * SOFTWARE.
+ *
  * ___________________________________________________________________
  */
 
 package com.microfocus.application.automation.tools.octane;
 
+import com.cloudbees.plugins.credentials.CredentialsNameProvider;
+import com.cloudbees.plugins.credentials.CredentialsProvider;
+import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
+import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 import com.hp.octane.integrations.CIPluginServices;
+import com.hp.octane.integrations.OctaneClient;
 import com.hp.octane.integrations.OctaneSDK;
 import com.hp.octane.integrations.dto.DTOFactory;
 import com.hp.octane.integrations.dto.configuration.CIProxyConfiguration;
@@ -40,22 +53,21 @@ import com.hp.octane.integrations.dto.parameters.CIParameters;
 import com.hp.octane.integrations.dto.pipelines.PipelineNode;
 import com.hp.octane.integrations.dto.securityscans.FodServerConfiguration;
 import com.hp.octane.integrations.dto.securityscans.SSCProjectConfiguration;
-import com.hp.octane.integrations.dto.snapshots.SnapshotNode;
 import com.hp.octane.integrations.exceptions.ConfigurationException;
 import com.hp.octane.integrations.exceptions.PermissionException;
+import com.hp.octane.integrations.services.configurationparameters.FortifySSCTokenParameter;
+import com.hp.octane.integrations.services.configurationparameters.UftTestRunnerFolderParameter;
 import com.microfocus.application.automation.tools.model.OctaneServerSettingsModel;
-import com.microfocus.application.automation.tools.octane.configuration.ConfigurationService;
-import com.microfocus.application.automation.tools.octane.configuration.FodConfigUtil;
-import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
-import com.microfocus.application.automation.tools.octane.configuration.SSCServerConfigUtil;
+import com.microfocus.application.automation.tools.octane.configuration.*;
 import com.microfocus.application.automation.tools.octane.executor.ExecutorConnectivityService;
 import com.microfocus.application.automation.tools.octane.executor.TestExecutionJobCreatorService;
-import com.microfocus.application.automation.tools.octane.executor.UftConstants;
 import com.microfocus.application.automation.tools.octane.executor.UftJobRecognizer;
 import com.microfocus.application.automation.tools.octane.model.ModelFactory;
 import com.microfocus.application.automation.tools.octane.model.processors.parameters.ParameterProcessors;
 import com.microfocus.application.automation.tools.octane.model.processors.projects.AbstractProjectProcessor;
 import com.microfocus.application.automation.tools.octane.model.processors.projects.JobProcessorFactory;
+import com.microfocus.application.automation.tools.octane.model.processors.scm.SCMUtils;
+import com.microfocus.application.automation.tools.octane.testrunner.TestsToRunConverterBuilder;
 import com.microfocus.application.automation.tools.octane.tests.TestListener;
 import com.microfocus.application.automation.tools.octane.tests.build.BuildHandlerUtils;
 import com.microfocus.application.automation.tools.octane.tests.junit.JUnitExtension;
@@ -91,7 +103,11 @@ import java.util.stream.Collectors;
 
 public class CIJenkinsServicesImpl extends CIPluginServices {
 	private static final Logger logger = SDKBasedLoggerProvider.getLogger(CIJenkinsServicesImpl.class);
+	private static final java.util.logging.Logger systemLogger = java.util.logging.Logger.getLogger(CIJenkinsServicesImpl.class.getName());
 	private static final DTOFactory dtoFactory = DTOFactory.getInstance();
+
+	//we going to print octaneAllowedStorage to system log, this flag help to avoid multiple prints
+	private static boolean skipOctaneAllowedStoragePrint = false;
 
 	@Override
 	public CIServerInfo getServerInfo() {
@@ -165,6 +181,9 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 					PipelineNode tmpConfig;
 					if (tmpJob != null && JobProcessorFactory.WORKFLOW_MULTI_BRANCH_JOB_NAME.equals(tmpJob.getParent().getClass().getName())) {
 						tempJobName = tmpJob.getParent().getFullName();
+						if(jobsMap.containsKey(tempJobName)){
+							continue;//skip redundant creation config for multibranch job
+						}
 						tmpConfig = createPipelineNodeFromJobName(tempJobName);
 					} else {
 						tmpConfig = createPipelineNode(tempJobName, tmpJob, includeParameters);
@@ -178,7 +197,12 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 			if(jobsMap.isEmpty() && !Jenkins.get().hasPermission(Item.READ)){
 				//it is possible that user doesn't have general READ permission
 				// but has read permission to specific job, so we postponed this check to end
-				throw new PermissionException(HttpStatus.SC_FORBIDDEN);
+				String userName = ImpersonationUtil.getUserNameForImpersonation(getInstanceId(), workspaceId);
+				if(StringUtils.isEmpty(userName)){
+					userName = "anonymous";
+				}
+				String msg = String.format("User %s does not have READ permission",userName);
+				throw new PermissionException(msg, HttpStatus.SC_FORBIDDEN);
 			}
 
 			result.setJobs(jobsMap.values().toArray(new PipelineNode[0]));
@@ -227,14 +251,10 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 	}
 
 	@Override
-	public void runPipeline(String jobCiId, String originalBody) {
+	public void runPipeline(String jobCiId, CIParameters ciParameters) {
 		ACLContext securityContext = startImpersonation();
 		try {
 			Job job = getJobByRefId(jobCiId);
-			//create UFT test runner job on the fly if missing
-			if (job == null && jobCiId != null && jobCiId.startsWith(UftConstants.EXECUTION_JOB_MIDDLE_NAME_WITH_TEST_RUNNERS)) {
-				job = createExecutorByJobName(jobCiId);
-			}
 			if (job != null) {
 				if (job instanceof AbstractProject && ((AbstractProject) job).isDisabled()) {
 					//disabled job is not runnable and in this context we will handle it as 404
@@ -246,7 +266,7 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 					throw new PermissionException(HttpStatus.SC_FORBIDDEN);
 				}
 				if (job instanceof AbstractProject || job.getClass().getName().equals(JobProcessorFactory.WORKFLOW_JOB_NAME)) {
-					doRunImpl(job, originalBody);
+					doRunImpl(job, ciParameters);
 				}
 			} else {
 				throw new ConfigurationException(HttpStatus.SC_NOT_FOUND);
@@ -257,7 +277,7 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 	}
 
 	@Override
-	public void stopPipelineRun(String jobCiId, String originalBody) {
+	public void stopPipelineRun(String jobCiId, CIParameters ciParameters) {
 		ACLContext securityContext = startImpersonation();
 		try {
 			Job job = getJobByRefId(jobCiId);
@@ -268,47 +288,11 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 					throw new PermissionException(HttpStatus.SC_FORBIDDEN);
 				}
 				if (job instanceof AbstractProject || job.getClass().getName().equals(JobProcessorFactory.WORKFLOW_JOB_NAME)) {
-					doStopImpl(job, originalBody);
+					doStopImpl(job, ciParameters);
 				}
 			} else {
 				throw new ConfigurationException(HttpStatus.SC_NOT_FOUND);
 			}
-		} finally {
-			stopImpersonation(securityContext);
-		}
-	}
-
-
-	@Override
-	public SnapshotNode getSnapshotLatest(String jobCiId, boolean subTree) {
-		ACLContext securityContext = startImpersonation();
-		try {
-			SnapshotNode result = null;
-			Job job = getJobByRefId(jobCiId);
-			if (job != null) {
-				Run run = job.getLastBuild();
-				if (run != null) {
-					result = ModelFactory.createSnapshotItem(run, subTree);
-				}
-			}
-			return result;
-		} finally {
-			stopImpersonation(securityContext);
-		}
-	}
-
-	@Override
-	public SnapshotNode getSnapshotByNumber(String jobId, String buildId, boolean subTree) {
-		ACLContext securityContext = startImpersonation();
-		try {
-			SnapshotNode result = null;
-			Run run = getRunByRefNames(jobId, buildId);
-			if (run != null) {
-				result = ModelFactory.createSnapshotItem(run, subTree);
-			} else {
-				logger.error("build '" + jobId + " #" + buildId + "' not found");
-			}
-			return result;
 		} finally {
 			stopImpersonation(securityContext);
 		}
@@ -395,6 +379,27 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 	}
 
 	@Override
+	public InputStream getSCMData(String jobId, String buildId) {
+		ACLContext originalContext = startImpersonation();
+		InputStream result = null;
+
+		try {
+			Run run = getRunByRefNames(jobId, buildId);
+			if (run != null) {
+				result = SCMUtils.getSCMData(run);
+			} else {
+				logger.error("build '" + jobId + " #" + buildId + "' not found");
+			}
+		} catch (IOException | InterruptedException e) {
+			logger.error("Failed to load SCMData for jobId " + jobId + " buildId " + buildId, e);
+		} finally {
+			stopImpersonation(originalContext);
+		}
+
+		return result;
+	}
+
+	@Override
 	public SSCProjectConfiguration getSSCProjectConfiguration(String jobId, String buildId) {
 		ACLContext originalContext = startImpersonation();
 		try {
@@ -412,7 +417,8 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 			}
 
 			String sscServerUrl = SSCServerConfigUtil.getSSCServer();
-			String sscAuthToken = ConfigurationService.getSettings(getInstanceId()).getSscBaseToken();
+			String sscAuthToken = getFortifySSCToken();
+
 			if (sscServerUrl != null && !sscServerUrl.isEmpty() && projectVersionPair != null) {
 				result = dtoFactory.newDTO(SSCProjectConfiguration.class)
 						.setSSCUrl(sscServerUrl)
@@ -425,6 +431,15 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		} finally {
 			stopImpersonation(originalContext);
 		}
+	}
+
+	private String getFortifySSCToken(){
+		OctaneClient octaneClient = OctaneSDK.getClientByInstanceId(getInstanceId());
+		FortifySSCTokenParameter parameter = (FortifySSCTokenParameter) octaneClient.getConfigurationService().getConfiguration().getParameter(FortifySSCTokenParameter.KEY);
+		if (parameter != null) {
+			return parameter.getToken();
+		}
+		return "";
 	}
 
 	@Override
@@ -488,24 +503,27 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		}
 	}
 
-
-	private Job createExecutorByJobName(String uftExecutorJobNameWithTestRunner) {
-		ACLContext securityContext = startImpersonation();
-		try {
-			return TestExecutionJobCreatorService.createExecutorByJobName(uftExecutorJobNameWithTestRunner);
-		} catch (Exception e) {
-			logger.warn("Failed to create createExecutor by name : " + e.getMessage());
-			return null;
-		} finally {
-			stopImpersonation(securityContext);
-		}
-	}
-
 	@Override
 	public OctaneResponse checkRepositoryConnectivity(TestConnectivityInfo testConnectivityInfo) {
 		ACLContext securityContext = startImpersonation();
 		try {
-			return ExecutorConnectivityService.checkRepositoryConnectivity(testConnectivityInfo);
+			OctaneResponse response =  ExecutorConnectivityService.checkRepositoryConnectivity(testConnectivityInfo);
+
+			//validate UftTestRunnerFolderParameter
+			if (response.getStatus() == HttpStatus.SC_OK) {
+				OctaneClient octaneClient = OctaneSDK.getClientByInstanceId(getInstanceId());
+				UftTestRunnerFolderParameter uftFolderParameter = (UftTestRunnerFolderParameter) octaneClient.getConfigurationService()
+						.getConfiguration().getParameter(UftTestRunnerFolderParameter.KEY);
+				if (uftFolderParameter != null) {
+					List<String> errors = new ArrayList<>();
+					ConfigurationValidator.checkUftFolderParameter(uftFolderParameter, errors);
+					if (!errors.isEmpty()) {
+						response.setStatus(HttpStatus.SC_BAD_REQUEST);
+						response.setBody(errors.get(0));
+					}
+				}
+			}
+			return response;
 		} finally {
 			stopImpersonation(securityContext);
 		}
@@ -532,6 +550,15 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		}
 	}
 
+	@Override
+	public List<CredentialsInfo> getCredentials() {
+		List<StandardUsernameCredentials> list = CredentialsProvider.lookupCredentials(StandardUsernameCredentials.class, (Item) null, null, (DomainRequirement) null);
+		List<CredentialsInfo> output = list.stream()
+				.map(c -> dtoFactory.newDTO(CredentialsInfo.class).setCredentialsId(c.getId()).setUsername(CredentialsNameProvider.name(c)))
+				.collect(Collectors.toList());
+		return output;
+	}
+
 	private ACLContext startImpersonation() {
 		return startImpersonation(null);
 	}
@@ -544,15 +571,29 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		ImpersonationUtil.stopImpersonation(impersonatedContext);
 	}
 
-	private PipelineNode createPipelineNode(String name, Job job, boolean includeParameters) {
-		PipelineNode tmpConfig = dtoFactory.newDTO(PipelineNode.class)
-				.setJobCiId(JobProcessorFactory.getFlowProcessor(job).getTranslatedJobName())
-				.setName(name);
-		if (includeParameters) {
-			tmpConfig.setParameters(ParameterProcessors.getConfigs(job));
-		}
-		return tmpConfig;
-	}
+    private PipelineNode createPipelineNode(String name, Job job, boolean includeParameters) {
+        PipelineNode tmpConfig = dtoFactory.newDTO(PipelineNode.class)
+                .setJobCiId(JobProcessorFactory.getFlowProcessor(job).getTranslatedJobName())
+                .setName(name);
+
+        if (includeParameters) {
+            tmpConfig.setParameters(ParameterProcessors.getConfigs(job));
+
+            //setIsTestRunner
+            if (tmpConfig.getParameters() != null) {
+                Optional opt = tmpConfig.getParameters().stream().filter(p -> TestsToRunConverterBuilder.TESTS_TO_RUN_PARAMETER.equals(p.getName())).findFirst();
+				tmpConfig.setIsTestRunner(opt.isPresent());
+            }
+
+            //setHasUpstream
+            if (job instanceof AbstractProject) {
+                List<AbstractProject> upstreams = Jenkins.get().getDependencyGraph().getUpstream((AbstractProject) job);
+				tmpConfig.setHasUpstream(upstreams.size() > 0);
+            }
+
+        }
+        return tmpConfig;
+    }
 
 	private PipelineNode createPipelineNodeFromJobName(String name) {
 		return dtoFactory.newDTO(PipelineNode.class)
@@ -591,21 +632,20 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		return result;
 	}
 
-	private void doRunImpl(Job job, String originalBody) {
+	private void doRunImpl(Job job, CIParameters ciParameters) {
 		AbstractProjectProcessor jobProcessor = JobProcessorFactory.getFlowProcessor(job);
-		doRunStopImpl(jobProcessor::scheduleBuild, "execution", job, originalBody);
+		doRunStopImpl(jobProcessor::scheduleBuild, "execution", job, ciParameters);
 	}
 
-	private void doStopImpl(Job job, String originalBody) {
+	private void doStopImpl(Job job, CIParameters ciParameters) {
 		AbstractProjectProcessor jobProcessor = JobProcessorFactory.getFlowProcessor(job);
-		doRunStopImpl(jobProcessor::cancelBuild, "stop", job, originalBody);
+		doRunStopImpl(jobProcessor::cancelBuild, "stop", job, ciParameters);
 	}
 
 	//  TODO: the below flow should go via JobProcessor, once scheduleBuild will be implemented for all of them
-	private void doRunStopImpl(BiConsumer<Cause, ParametersAction> method, String methodName, Job job, String originalBody) {
+	private void doRunStopImpl(BiConsumer<Cause, ParametersAction> method, String methodName, Job job, CIParameters ciParameters) {
 		ParametersAction parametersAction = new ParametersAction();
-		if (originalBody != null && !originalBody.isEmpty() && originalBody.contains("parameters")) {
-			CIParameters ciParameters = DTOFactory.getInstance().dtoFromJson(originalBody, CIParameters.class);
+		if (ciParameters != null) {
 			parametersAction = new ParametersAction(createParameters(job, ciParameters));
 		}
 
@@ -700,10 +740,45 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 		return item;
 	}
 
-    public static File getAllowedStorageFile() {
-        Jenkins jenkins = Jenkins.getInstanceOrNull();
-        return (jenkins == null /*is slave*/) ? new File("octanePluginContent") : new File(jenkins.getRootDir(), "userContent") ;
-    }
+	public static File getAllowedStorageFile() {
+		Jenkins jenkins = Jenkins.getInstanceOrNull();
+		File folder;
+		if (jenkins != null) {
+			folder = getAllowedStorageFileForMasterJenkins(jenkins);
+		} else {/*is slave*/
+			folder =  new File("octanePluginContent");
+		}
+		return folder;
+	}
+
+	private static File getAllowedStorageFileForMasterJenkins(Jenkins jenkins) {
+		boolean allowPrint;
+		synchronized (dtoFactory) {
+			allowPrint = !skipOctaneAllowedStoragePrint;
+			skipOctaneAllowedStoragePrint = true;
+		}
+
+		File folder;
+		// jenkins.xml
+		//  <arguments>-Xrs -Xmx256m -octaneAllowedStorage=userContentTemp -Dhudson.lifecycle=hudson.lifecycle.WindowsServiceLifecycle -jar "%BASE%\jenkins.war"
+		String prop = System.getProperty("octaneAllowedStorage");
+		if (StringUtils.isNotEmpty(prop)) {
+			folder = new File(prop);
+			if (!folder.isAbsolute()) {
+				folder = new File(jenkins.getRootDir(), prop);
+			}
+			if (allowPrint) {
+				systemLogger.info("octaneAllowedStorage : " + folder.getAbsolutePath());
+				//validate that folder exist
+				if (!folder.exists() && !folder.mkdirs()) {
+					systemLogger.warning("Failed to create octaneAllowedStorage : " + folder.getAbsolutePath() + ". Create this folder and restart Jenkins.");
+				}
+			}
+		} else {
+			folder = new File(jenkins.getRootDir(), "userContent");
+		}
+		return folder;
+	}
 
 	public static CIServerInfo getJenkinsServerInfo() {
 		CIServerInfo result = dtoFactory.newDTO(CIServerInfo.class);
@@ -720,5 +795,15 @@ public class CIJenkinsServicesImpl extends CIPluginServices {
 
 	public static void publishEventToRelevantClients(CIEvent event) {
 		OctaneSDK.getClients().forEach(c->c.getEventsService().publishEvent(event));
+	}
+
+	@Override
+	public String getParentJobName(String jobId) {
+		if (jobId != null && jobId.contains(BuildHandlerUtils.JOB_LEVEL_SEPARATOR)) {
+			int index = jobId.lastIndexOf(BuildHandlerUtils.JOB_LEVEL_SEPARATOR);
+			String parent = jobId.substring(0, index);
+			return parent;
+		}
+		return null;
 	}
 }
