@@ -32,6 +32,7 @@ import com.microfocus.application.automation.tools.results.projectparser.perform
 import com.microfocus.application.automation.tools.uft.model.RerunSettingsModel;
 import hudson.FilePath;
 import hudson.model.Node;
+import hudson.model.TaskListener;
 import hudson.util.FormValidation;
 import jenkins.model.Jenkins;
 import org.apache.commons.lang.StringUtils;
@@ -43,8 +44,11 @@ import org.xml.sax.SAXException;
 import javax.xml.parsers.DocumentBuilder;
 import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.parsers.ParserConfigurationException;
-import java.io.*;
-
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Paths;
 import java.util.*;
 import java.util.logging.Logger;
 
@@ -81,6 +85,10 @@ public class UftToolUtils {
     public static boolean isMtbxContent(String testContent) {
         return testContent != null && testContent.toLowerCase().contains("<mtbx>");
     }
+    public static boolean isMtbxFile(String testContent) {
+        return testContent != null && testContent.toLowerCase().endsWith(".mtbx");
+    }
+
 
     /**
      * Retrieves the build tests
@@ -102,10 +110,17 @@ public class UftToolUtils {
         return buildTests;
     }
 
-    private static List<String> getTests(String rawTestString) {
+    public static List<String> getTests(String rawTestString) {
         List<String> buildTests = new ArrayList<>();
         if (isMtbxContent(rawTestString)) {//mtbx content in the test path
             buildTests = extractTestPathsFromMtbxContent(rawTestString);
+        } else if (isMtbxFile(rawTestString)) {//mtbx file in the test path
+            try {
+                String fileContent = new String(Files.readAllBytes(Paths.get(rawTestString)));
+                return getTests(fileContent);
+            } catch (IOException e) {
+                logger.info(String.format("Failed to get tests from mtbx file %s : %s", rawTestString, e.getMessage()));
+            }
         } else if (rawTestString != null) {
             List<String> tests = Arrays.asList(rawTestString.split("\\r?\\n"));
             File testFolder = new File(rawTestString);
@@ -151,10 +166,10 @@ public class UftToolUtils {
     private static List<String> getTestsFromNode(String nodeName, String path) {
         Node node = Jenkins.get().getNode(nodeName);
         FilePath filePath = new FilePath(node.getChannel(), path);
-        UftMasterToSlave uftMasterToSlave = new UftMasterToSlave();
+        UftMasterToSlave uftMasterToSlave = new UftMasterToSlave(path);
         List<String> tests = new ArrayList<>();
         try {
-            tests = filePath.act(uftMasterToSlave);//invoke listFilesForFolder
+            tests = filePath.act(uftMasterToSlave);//
         } catch (IOException e) {
             logger.info(String.format("File path not found %s", e.getMessage()));
         } catch (InterruptedException e) {
@@ -164,23 +179,23 @@ public class UftToolUtils {
         return tests;
     }
 
-    public static void deleteReportFoldersFromNode(String nodeName, String testPath){
-         FilePath filePath = getFilePath(nodeName, testPath);
-            try {
-                List<FilePath> entries = filePath.list();
-                for (FilePath entry : entries) {
-                    if (entry.getName().contains("Report")) {
-                        entry.deleteContents();
-                        entry.delete();
+    public static void deleteReportFoldersFromNode(String nodeName, String testPath, TaskListener listener) {
+        FilePath filePath = getFilePath(nodeName, testPath);
+        try {
+            List<FilePath> entries = filePath.list();
+            for (FilePath entry : entries) {
+                try {
+                    if (entry.getName().startsWith("Report")) {
+                        entry.deleteRecursive();
+                        listener.getLogger().println(String.format("Folder %s is deleted", entry));
                     }
+                } catch (Exception e) {
+                    listener.error(String.format("Failed to delete folder %s : %s", entry.getName(), e.getMessage()));
                 }
-            } catch (IOException e) {
-                e.printStackTrace();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
             }
-
-
+        } catch (IOException | InterruptedException e) {
+            listener.error("Failure in clearing report folders for " + testPath +" : " + e.getMessage());
+        }
     }
 
     public static FilePath getFilePath(String nodeName, String testPath){
@@ -201,7 +216,7 @@ public class UftToolUtils {
      * @param folder the test path setup in the configuration (can be the an mtbx file, a single test or a folder containing other tests)
      * @return a list of tests
      */
-    public static List<String> listFilesForFolder(final File folder) {
+    private static List<String> listFilesForFolder(final File folder) {
         List<String> buildTests = new ArrayList<>();
 
         if (!folder.isDirectory() && folder.getName().contains("mtbx")) {

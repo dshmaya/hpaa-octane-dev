@@ -31,6 +31,8 @@ package com.microfocus.application.automation.tools.octane.tests.junit;
 import com.hp.octane.integrations.dto.DTOFactory;
 import com.hp.octane.integrations.dto.tests.Property;
 import com.hp.octane.integrations.dto.tests.TestSuite;
+import com.hp.octane.integrations.executor.converters.MfUftConverter;
+import com.hp.octane.integrations.uft.ufttestresults.UftTestResultsUtils;
 import com.hp.octane.integrations.utils.SdkConstants;
 import com.microfocus.application.automation.tools.octane.configuration.SDKBasedLoggerProvider;
 import com.microfocus.application.automation.tools.octane.tests.HPRunnerType;
@@ -53,6 +55,8 @@ import java.text.ParseException;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * JUnit result parser and enricher according to HPRunnerType
@@ -77,6 +81,7 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 	private String errorType;
 	private String errorMsg;
 	private String externalURL;
+	private String uftResultFilePath;
 	private String description;
 	private List<ModuleDetection> moduleDetection;
 	private String jenkinsRootUrl;
@@ -84,8 +89,10 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 	private Object additionalContext;
 	private String filePath;
 	public static final String SRL_REPORT_URL = "reportUrl";
+	private Pattern testParserRegEx;
+	private String externalRunId;
 
-	public JUnitXmlIterator(InputStream read, List<ModuleDetection> moduleDetection, FilePath workspace, String sharedCheckOutDirectory, String jobName, String buildId, long buildStarted, boolean stripPackageAndClass, HPRunnerType hpRunnerType, String jenkinsRootUrl, Object additionalContext) throws XMLStreamException {
+	public JUnitXmlIterator(InputStream read, List<ModuleDetection> moduleDetection, FilePath workspace, String sharedCheckOutDirectory, String jobName, String buildId, long buildStarted, boolean stripPackageAndClass, HPRunnerType hpRunnerType, String jenkinsRootUrl, Object additionalContext,Pattern testParserRegEx) throws XMLStreamException {
 		super(read);
 		this.stripPackageAndClass = stripPackageAndClass;
 		this.moduleDetection = moduleDetection;
@@ -97,6 +104,7 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 		this.hpRunnerType = hpRunnerType;
 		this.jenkinsRootUrl = jenkinsRootUrl;
 		this.additionalContext = additionalContext;
+		this.testParserRegEx = testParserRegEx;
 	}
 
 	private static long parseTime(String timeString) {
@@ -140,6 +148,7 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 				errorMsg = "";
 				externalURL = "";
 				description = "";
+				uftResultFilePath = "";
 				moduleName = moduleNameFromFile;
 			} else if ("className".equals(localName)) { // NON-NLS
 				String fqn = readNextValue();
@@ -159,8 +168,9 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 			} else if ("stdout".equals(localName)) {
 				String stdoutValue = readNextValue();
 				if (stdoutValue != null) {
-					if (hpRunnerType.equals(HPRunnerType.UFT) && stdoutValue.contains("Test result: Warning")) {
+					if ((hpRunnerType.equals(HPRunnerType.UFT) || hpRunnerType.equals(HPRunnerType.UFT_MBT)) && stdoutValue.contains("Test result: Warning")) {
 						errorMsg = "Test ended with 'Warning' status.";
+						parseUftErrorMessages();
 					}
 
 					externalURL = extractValueFromStdout(stdoutValue, "__octane_external_url_start__", "__octane_external_url_end__", externalURL);
@@ -172,7 +182,7 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 					testName = testName.substring(0, testName.length() - 2);
 				}
 
-                if (hpRunnerType.equals(HPRunnerType.UFT)) {
+                if (hpRunnerType.equals(HPRunnerType.UFT)|| hpRunnerType.equals(HPRunnerType.UFT_MBT)) {
 					if (testName != null && testName.contains("..")) { //resolve existence of ../ - for example c://a/../b => c://b
 						testName = new File(testName).getCanonicalPath();
 					}
@@ -187,8 +197,13 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 					// currently this handling is needed for UFT tests
 					int uftTextIndexStart = getUftTestIndexStart(workspace, sharedCheckOutDirectory, testName);
 					if (uftTextIndexStart != -1) {
-						String path = testName.substring(uftTextIndexStart);
-						path = path.replace(SdkConstants.FileSystem.LINUX_PATH_SPLITTER, SdkConstants.FileSystem.WINDOWS_PATH_SPLITTER);
+						String path = testName.substring(uftTextIndexStart).replace(SdkConstants.FileSystem.LINUX_PATH_SPLITTER, SdkConstants.FileSystem.WINDOWS_PATH_SPLITTER);;
+						if(path.startsWith(MfUftConverter.MBT_PARENT_SUB_DIR)){//remove MBT prefix
+							//mbt test located in two level folder : ___mbt/_order
+							path = path.substring(MfUftConverter.MBT_PARENT_SUB_DIR.length()+1);//remove ___mbt
+							path = path.substring(path.indexOf(SdkConstants.FileSystem.WINDOWS_PATH_SPLITTER));//remove order part
+						}
+
 						path = StringUtils.strip(path, SdkConstants.FileSystem.WINDOWS_PATH_SPLITTER);
 
 						//split path to package and name fields
@@ -218,8 +233,9 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 						testReportCreated = optional.isPresent();
 					}
 
-					workspace.createTextTempFile("build" + buildId + "." + cleanTestName(testName) + ".", "", "Created  " + testReportCreated);
+					//workspace.createTextTempFile("build" + buildId + "." + cleanTestName(testName) + ".", "", "Created  " + testReportCreated);
 					if (testReportCreated) {
+						uftResultFilePath = ((List<String>) additionalContext).get(0) +"\\archive\\UFTReport\\" + cleanedTestName + "\\run_results.xml";
 						externalURL = jenkinsRootUrl + "job/" + jobName + "/" + buildId + "/artifact/UFTReport/" + cleanedTestName + "/run_results.html";
 					} else {
 						//if UFT didn't created test results page - add reference to Jenkins test results page
@@ -260,7 +276,9 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 				if (index >= 0) {
 					errorType = stackTraceStr.substring(0, index);
 				}
-
+				if ((hpRunnerType.equals(HPRunnerType.UFT)|| hpRunnerType.equals(HPRunnerType.UFT_MBT)) && StringUtils.isNotEmpty(errorMsg)) {
+					parseUftErrorMessages();
+				}
 			}
 		} else if (event instanceof EndElement) {
 			EndElement element = (EndElement) event;
@@ -268,13 +286,42 @@ public class JUnitXmlIterator extends AbstractXmlIterator<JUnitTestResult> {
 
 			if ("case".equals(localName)) { // NON-NLS
 				TestError testError = new TestError(stackTraceStr, errorType, errorMsg);
+
+				if(this.testParserRegEx != null){
+					splitTestNameByPattern();
+				}
 				if (stripPackageAndClass) {
 					//workaround only for UFT - we do not want packageName="All-Tests" and className="&lt;None>" as it comes from JUnit report
-					addItem(new JUnitTestResult(moduleName, "", "", testName, status, duration, buildStarted, testError, externalURL, description));
+					addItem(new JUnitTestResult(moduleName, "", "", testName, status, duration, buildStarted, testError, externalURL, description, hpRunnerType,this.externalRunId));
 				} else {
-					addItem(new JUnitTestResult(moduleName, packageName, className, testName, status, duration, buildStarted, testError, externalURL, description));
+					addItem(new JUnitTestResult(moduleName, packageName, className, testName, status, duration, buildStarted, testError, externalURL, description, hpRunnerType,this.externalRunId));
 				}
 			}
+		}
+	}
+
+	private void splitTestNameByPattern(){
+		Matcher matcher = testParserRegEx.matcher(this.testName);
+		if (matcher.find()) {
+			this.externalRunId = this.testName.substring(matcher.start());
+			this.testName = this.testName.substring(0, matcher.start());
+		}
+	}
+
+
+	private void parseUftErrorMessages() {
+		try {
+			if (StringUtils.isNotEmpty(uftResultFilePath)) {
+				String msg = UftTestResultsUtils.getAggregatedErrorMessage(UftTestResultsUtils.getErrorData(new File(uftResultFilePath)));
+				if (msg.length() >= 255) {
+					msg = msg.substring(0, 250) +" ...";
+				}
+				if (StringUtils.isNotEmpty(msg)) {
+					errorMsg = msg;
+				}
+			}
+		} catch (Exception e) {
+			logger.error("Failed to parseUftErrorMessages" + e.getMessage());
 		}
 	}
 

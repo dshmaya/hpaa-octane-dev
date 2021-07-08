@@ -65,6 +65,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /**
  * Converter of Jenkins test report to ALM Octane test report format(junitResult.xml->mqmTests.xml)
@@ -75,6 +76,7 @@ public class JUnitExtension extends OctaneTestsExtension {
 
 	private static final String JUNIT_RESULT_XML = "junitResult.xml"; // NON-NLS
 	public static final String TEMP_TEST_RESULTS_FILE_NAME_PREFIX = "GetJUnitTestResults";
+	private static final String TEST_RESULT_NAME_REGEX_PATTERN_PARAMETER_NAME = "octane_test_result_name_run_regex_pattern";
 
 	@Inject
 	private ResultFieldsDetectionService resultFieldsDetectionService;
@@ -105,7 +107,18 @@ public class JUnitExtension extends OctaneTestsExtension {
 				return null;
 			}
 
-			FilePath filePath = workspace.act(new GetJUnitTestResults(run, Collections.singletonList(resultFile), false, jenkinsRootUrl));
+			boolean getResultsOnMaster = false;
+			HPRunnerType hpRunnerType = MFToolsDetectionExtension.getRunnerType(run);
+			if(hpRunnerType.equals(HPRunnerType.UFT) || hpRunnerType.equals(HPRunnerType.UFT_MBT)){
+				getResultsOnMaster = true;
+			}
+			FilePath filePath;
+			if (getResultsOnMaster) {
+				filePath = (new GetJUnitTestResults(run, hpRunnerType, Collections.singletonList(resultFile), false, jenkinsRootUrl)).invoke(null, null);
+			} else {
+				filePath = workspace.act(new GetJUnitTestResults(run, hpRunnerType, Collections.singletonList(resultFile), false, jenkinsRootUrl));
+			}
+
 			ResultFields detectedFields = getResultFields(run);
 			return new TestResultContainer(new ObjectStreamIterator<>(filePath), detectedFields);
 		} else {
@@ -127,7 +140,7 @@ public class JUnitExtension extends OctaneTestsExtension {
 				}
 				if (!resultFiles.isEmpty()) {
 					ResultFields detectedFields = getResultFields(run);
-					FilePath filePath = BuildHandlerUtils.getWorkspace(run).act(new GetJUnitTestResults(run, resultFiles, false, jenkinsRootUrl));
+					FilePath filePath = BuildHandlerUtils.getWorkspace(run).act(new GetJUnitTestResults(run, HPRunnerType.NONE, resultFiles, false, jenkinsRootUrl));
 					return new TestResultContainer(new ObjectStreamIterator<>(filePath), detectedFields);
 				}
 			}
@@ -153,22 +166,23 @@ public class JUnitExtension extends OctaneTestsExtension {
 		private FilePath workspace;
 		private boolean stripPackageAndClass;
 		private String sharedCheckOutDirectory;
+		private Pattern testParserRegEx;
 
 		//this class is run on master and JUnitXmlIterator is runnning on slave.
 		//this object pass some master2slave data
 		private Object additionalContext;
 
-		public GetJUnitTestResults(Run<?, ?> build, List<FilePath> reports, boolean stripPackageAndClass, String jenkinsRootUrl) throws IOException, InterruptedException {
+		public GetJUnitTestResults(Run<?, ?> build, HPRunnerType hpRunnerType, List<FilePath> reports, boolean stripPackageAndClass, String jenkinsRootUrl) throws IOException, InterruptedException {
 			this.reports = reports;
 			this.filePath = new FilePath(build.getRootDir()).createTempFile(TEMP_TEST_RESULTS_FILE_NAME_PREFIX, null);
 			this.buildStarted = build.getStartTimeInMillis();
 			this.workspace = BuildHandlerUtils.getWorkspace(build);
 			this.stripPackageAndClass = stripPackageAndClass;
-			this.hpRunnerType = MFToolsDetectionExtension.getRunnerType(build);
+			this.hpRunnerType = hpRunnerType;
 			this.jenkinsRootUrl = jenkinsRootUrl;
 			String buildRootDir = build.getRootDir().getCanonicalPath();
 			this.sharedCheckOutDirectory = CheckOutSubDirEnvContributor.getSharedCheckOutDirectory(build.getParent());
-			if (sharedCheckOutDirectory == null && HPRunnerType.UFT.equals(hpRunnerType)) {
+			if (sharedCheckOutDirectory == null && (HPRunnerType.UFT.equals(hpRunnerType) || HPRunnerType.UFT_MBT.equals(hpRunnerType))) {
 				ParametersAction parameterAction = build.getAction(ParametersAction.class);
 				ParameterValue pv = parameterAction != null ? parameterAction.getParameter(UftConstants.UFT_CHECKOUT_FOLDER) : null;
 				sharedCheckOutDirectory = pv != null && pv instanceof StringParameterValue ?
@@ -183,11 +197,12 @@ public class JUnitExtension extends OctaneTestsExtension {
 					new ModuleDetection.Default());
 
 
-			if (HPRunnerType.UFT.equals(hpRunnerType)) {
+			if (HPRunnerType.UFT.equals(hpRunnerType) || HPRunnerType.UFT_MBT.equals(hpRunnerType)) {
 
 				//extract folder names for created tests
 				String reportFolder = buildRootDir + "/archive/UFTReport";
 				List<String> testFolderNames = new ArrayList<>();
+				testFolderNames.add(build.getRootDir().getAbsolutePath());
 				File reportFolderFile = new File(reportFolder);
 				if (reportFolderFile.exists()) {
 					File[] children = reportFolderFile.listFiles();
@@ -208,6 +223,21 @@ public class JUnitExtension extends OctaneTestsExtension {
 					logger.error("Failed to add log file for StormRunnerLoad :" + e.getMessage());
 				}
 			}
+			if(build.getAction(ParametersAction.class) != null && build.getAction(ParametersAction.class).getParameter(TEST_RESULT_NAME_REGEX_PATTERN_PARAMETER_NAME) != null &&
+					build.getAction(ParametersAction.class).getParameter(TEST_RESULT_NAME_REGEX_PATTERN_PARAMETER_NAME).getValue() != null) {
+				try {
+					//\[.*\] - input for testName = testName[parameters]
+					//\[.*\) - input for testName = testName[parameters](more params)
+					this.testParserRegEx = Pattern.compile(Objects.requireNonNull(build.getAction(ParametersAction.class).getParameter(TEST_RESULT_NAME_REGEX_PATTERN_PARAMETER_NAME).getValue()).toString());
+				} catch (IllegalArgumentException e){
+					logger.error("Failed to parse regular expression pattern for test result name extractor.Job name: {}, Build {}, Input: {}, Error massage: {}.",
+							this.jobName,
+							this.buildId,
+							Objects.requireNonNull(build.getAction(ParametersAction.class).getParameter(TEST_RESULT_NAME_REGEX_PATTERN_PARAMETER_NAME).getValue()).toString() +"\n",
+							e.getMessage());
+				}
+			}
+
 		}
 
 		@Override
@@ -218,7 +248,7 @@ public class JUnitExtension extends OctaneTestsExtension {
 
 			try {
 				for (FilePath report : reports) {
-					JUnitXmlIterator iterator = new JUnitXmlIterator(report.read(), moduleDetection, workspace, sharedCheckOutDirectory, jobName, buildId, buildStarted, stripPackageAndClass, hpRunnerType, jenkinsRootUrl, additionalContext);
+					JUnitXmlIterator iterator = new JUnitXmlIterator(report.read(), moduleDetection, workspace, sharedCheckOutDirectory, jobName, buildId, buildStarted, stripPackageAndClass, hpRunnerType, jenkinsRootUrl, additionalContext,testParserRegEx);
 					while (iterator.hasNext()) {
 						oos.writeObject(iterator.next());
 					}

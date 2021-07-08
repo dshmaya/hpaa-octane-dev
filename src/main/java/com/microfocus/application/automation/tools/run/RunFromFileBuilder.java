@@ -43,11 +43,11 @@ import hudson.model.*;
 import hudson.tasks.Builder;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.util.FormValidation;
+import hudson.util.IOUtils;
 import hudson.util.VariableResolver;
 import jenkins.model.Jenkins;
 import jenkins.tasks.SimpleBuildStep;
 import net.minidev.json.JSONObject;
-import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.DataBoundSetter;
@@ -68,7 +68,7 @@ import java.util.*;
  * Describes a regular jenkins build step from UFT or LR
  */
 public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
-    private static final String HP_TOOLS_LAUNCHER_EXE = "HpToolsLauncher.exe";
+    public static final String HP_TOOLS_LAUNCHER_EXE = "HpToolsLauncher.exe";
     private static final String LRANALYSIS_LAUNCHER_EXE = "LRAnalysisLauncher.exe";
     private String ResultFilename = "ApiResults.xml";
     private String ParamFileName = "ApiRun.txt";
@@ -760,7 +760,7 @@ public class RunFromFileBuilder extends Builder implements SimpleBuildStep {
                String testPath = mergedProperties.getProperty(("Test" + index));
                List<String> buildTests = UftToolUtils.getBuildTests(selectedNode, testPath);
                for(String test : buildTests) {
-                   UftToolUtils.deleteReportFoldersFromNode(selectedNode, test);
+                   UftToolUtils.deleteReportFoldersFromNode(selectedNode, test, listener);
                }
                index++;
            }
